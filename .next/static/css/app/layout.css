@@ -1,0 +1,31 @@
+/*!*************************************************************************************************************************************************************************************************************************************************************!*\
+  !*** css ./node_modules/next/dist/build/webpack/loaders/css-loader/src/index.js??ruleSet[1].rules[12].oneOf[12].use[2]!./node_modules/next/dist/build/webpack/loaders/postcss-loader/src/index.js??ruleSet[1].rules[12].oneOf[12].use[3]!./app/globals.css ***!
+  \*************************************************************************************************************************************************************************************************************************************************************/
+@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;500;600&display=swap');
+
+:root {
+  --neon-green: #00ff9d;
+  --neon-green-soft: #00ff9d55;
+  --panel-bg: #020d0a;
+  --panel-border: #0c221a;
+  --glow-green: 0 0 12px #00ff9d88, 0 0 22px #00ff9d55;
+}
+
+body {
+  margin: 0;
+  font-family: "Fira Code", monospace;
+  background: radial-gradient(circle at 0 0, #00120b, #000);
+  color: #d0fbe8;
+  -webkit-user-select: none;
+     -moz-user-select: none;
+          user-select: none;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-thumb {
+  background: #0d4f37;
+  border-radius: 50px;
+}
+

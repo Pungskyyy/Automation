@@ -1,0 +1,5 @@
+{
+  "/page": "app/page.js",
+  "/api/tiktok-comment/route": "app/api/tiktok-comment/route.js",
+  "/api/ig-comment/route": "app/api/ig-comment/route.js"
+}
