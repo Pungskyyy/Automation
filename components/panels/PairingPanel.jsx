@@ -1,94 +1,65 @@
 "use client";
 
-import NeonCard from "./NeonCard";
+import QRCode from "react-qr-code";
 
-export default function PairingPanel({
-  pairIpPort,
-  pairCode,
-  deviceIpPort,
-  pairLoading,
-  pairStatus,
-  setPairIpPort,
-  setPairCode,
-  setDeviceIpPort,
-  handlePair
-}) {
+export default function PairingQR({ pairIpPort, pairCode, onClose }) {
+  const qrValue = JSON.stringify({
+    pairIpPort,
+    pairCode
+  });
+
   return (
-    <NeonCard title="Wireless Pairing">
-      <p style={{ opacity: 0.7, marginTop: 0, marginBottom: "12px" }}>
-        Gunakan IP:Port dan pairing code dari menu Wireless Debugging.
-      </p>
-
-      <form
-        onSubmit={handlePair}
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "#000000cc",
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        zIndex: 9999
+      }}
+    >
+      <div
         style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: "10px",
-          fontSize: "13px"
+          padding: "20px",
+          background: "#0f172a",
+          borderRadius: "16px",
+          boxShadow: "0 0 20px #00ff9d55",
+          textAlign: "center",
+          width: "300px"
         }}
       >
-        <input
-          placeholder="IP:Port"
-          value={pairIpPort}
-          onChange={(e) => setPairIpPort(e.target.value)}
-          style={{
-            padding: "8px 12px",
-            borderRadius: "10px",
-            border: "1px solid #0c221a",
-            background: "#000",
-            color: "var(--neon-green)"
-          }}
+        <h3 style={{ color: "#00fca8", marginBottom: "12px" }}>
+          QR Pairing Device
+        </h3>
+
+        <QRCode
+          value={qrValue}
+          size={220}
+          style={{ borderRadius: "10px", background: "#fff", padding: "8px" }}
         />
 
-        <input
-          placeholder="Pairing code"
-          value={pairCode}
-          onChange={(e) => setPairCode(e.target.value)}
-          style={{
-            padding: "8px 12px",
-            borderRadius: "10px",
-            border: "1px solid #0c221a",
-            background: "#000",
-            color: "var(--neon-green)"
-          }}
-        />
-
-        <input
-          placeholder="Device IP:Port (opsional)"
-          value={deviceIpPort}
-          onChange={(e) => setDeviceIpPort(e.target.value)}
-          style={{
-            padding: "8px 12px",
-            borderRadius: "10px",
-            border: "1px solid #0c221a",
-            background: "#000",
-            color: "var(--neon-green)"
-          }}
-        />
+        <p style={{ marginTop: "12px", opacity: 0.8, fontSize: "12px" }}>
+          Scan dari Android untuk wireless pairing.
+        </p>
 
         <button
-          type="submit"
-          disabled={pairLoading}
+          onClick={onClose}
           style={{
-            padding: "9px 16px",
-            borderRadius: "12px",
-            border: "none",
-            background: "var(--neon-green)",
-            color: "#002417",
-            fontWeight: 700,
+            marginTop: "14px",
+            padding: "8px 16px",
+            background: "#00fca8",
+            color: "#00120b",
+            borderRadius: "8px",
+            fontWeight: "700",
             cursor: "pointer",
-            marginTop: "6px",
-            boxShadow: "0 0 8px #00ff9daa"
+            width: "100%"
           }}
         >
-          {pairLoading ? "Pairing..." : "Pair & Connect"}
+          Tutup
         </button>
-      </form>
-
-      {pairStatus && (
-        <p style={{ marginTop: "12px", opacity: 0.85 }}>{pairStatus}</p>
-      )}
-    </NeonCard>
+      </div>
+    </div>
   );
 }

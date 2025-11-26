@@ -16,7 +16,7 @@ export async function POST(req) {
       );
     }
 
-    // adb pair ip:port code
+    // adb pair 10.76.230.1:38513
     const pairCmd = `adb pair ${pairIpPort} ${pairCode}`;
     const pairResult = await execAsync(pairCmd);
 

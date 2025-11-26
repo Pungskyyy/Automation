@@ -6,7 +6,12 @@ export default function Sidebar({ active, onChange }) {
     { id: "pairing", label: "Wireless Pairing", icon: "📡" },
     { id: "automation", label: "Automation", icon: "⚡" },
     { id: "logs", label: "Logs", icon: "📜" },
+  
+    // Tambahan baru
+    { id: "tiktok", label: "Auto Comment TikTok", icon: "🎵" },
+    { id: "instagram", label: "Auto Comment Instagram", icon: "📸" },
   ];
+
 
   return (
     <aside

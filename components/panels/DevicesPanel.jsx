@@ -96,20 +96,20 @@ export default function DevicesPanel({
             </div>
 
             <button
-              onClick={() => handleRunForDevice(d.serial)}
-              style={{
-                padding: "6px 12px",
-                borderRadius: "999px",
-                background: "var(--neon-green)",
-                border: "none",
-                color: "#02150c",
-                cursor: "pointer",
-                fontWeight: 700,
-                boxShadow: "0 0 6px #00ff9dbb",
-              }}
-            >
-              Run script
-            </button>
+  onClick={() => handleRunForDevice(d.serial)}
+  style={{
+    padding: "5px 10px",
+    borderRadius: "999px",
+    background: "#22c55e",
+    color: "#022c22",
+    fontWeight: 600,
+    fontSize: "11px",
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+  }}
+>
+  Run script
+</button>
           </div>
         ))}
       </div>
