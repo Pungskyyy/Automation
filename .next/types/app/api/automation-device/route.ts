@@ -1,8 +1,8 @@
-// File: /Users/capung/Downloads/autocommentGUI/app/api/automation/route.js
-import * as entry from '../../../../../app/api/automation/route.js'
+// File: /Users/capung/Downloads/autocommentGUI/app/api/automation-device/route.js
+import * as entry from '../../../../../app/api/automation-device/route.js'
 import type { NextRequest } from 'next/server.js'
 
-type TEntry = typeof import('../../../../../app/api/automation/route.js')
+type TEntry = typeof import('../../../../../app/api/automation-device/route.js')
 
 // Check that the entry is a valid entry
 checkFields<Diff<{
