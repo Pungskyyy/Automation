@@ -1,10 +1,15 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import Sidebar from "../components/Sidebar";
 import PairingQR from "../components/PairingQR";
 
 export default function Home() {
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
+
   const [activeSection, setActiveSection] = useState("devices");
 
   const [devices, setDevices] = useState([]);
@@ -37,6 +42,10 @@ export default function Home() {
   const [tiktokComment, setTikTokComment] = useState("");
   const [igUrl, setIgUrl] = useState("");
   const [igComment, setIgComment] = useState("");
+
+  // TCP/IP States
+  const [tcpipLoading, setTcpipLoading] = useState(false);
+  const [tcpipStatus, setTcpipStatus] = useState("");
 
   // Koordinat device 1080 × 2160
   const tiktokCoords = {
@@ -77,6 +86,27 @@ export default function Home() {
     }
 
     setLoadingDevices(false);
+  }
+
+  async function handleDisconnect(serial) {
+    addLog(`Disconnecting ${serial}...`);
+  
+    try {
+      const res = await fetch(`/api/disconnect/${serial}`, {
+        method: "POST",
+      });
+      const data = await res.json();
+  
+      if (!res.ok) throw new Error(data.error);
+  
+      addLog(`Disconnected ${serial}`);
+  
+      // refresh list
+      handleScanDevices();
+  
+    } catch (err) {
+      addLog("Disconnect error: " + err.message);
+    }
   }
 
   // ============================
@@ -314,6 +344,152 @@ export default function Home() {
   const cardBg = "#020617";
   const cardBorder = "#1f2937";
 
+  const users = [
+    { username: "admin", password: "password" },
+    { username: "Alfi", password: "alfi123!" },
+    { username: "Ardi", password: "Ardi123!" },
+    { username: "Ilham", password: "Ilham123!" },
+    { username: "Jata", password: "Jata123!" },
+  ];
+
+  const handleLogin = (e) => {
+    e.preventDefault();
+
+    console.log("DEBUG: Username -", username);
+    console.log("DEBUG: Password -", password);
+
+    // Validasi login dengan daftar pengguna
+    const user = users.find(
+      (u) => u.username === username && u.password === password
+    );
+
+    if (user) {
+      console.log("DEBUG: Login berhasil untuk user -", user.username);
+      setIsLoggedIn(true);
+      setLoginError("");
+    } else {
+      console.log("DEBUG: Login gagal. Username atau password salah.");
+      setLoginError("Username atau password salah");
+    }
+  };
+
+  const handleLogout = () => {
+    setIsLoggedIn(false);
+    setUsername("");
+    setPassword("");
+    setLoginError("");
+    console.log("DEBUG: User logged out");
+  };
+
+  if (!isLoggedIn) {
+    return (
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          height: "100vh",
+          background: "#0f172a",
+          color: "#f9fafb",
+        }}
+      >
+        <form
+          onSubmit={handleLogin}
+          style={{
+            background: "#1e293b",
+            padding: "24px",
+            borderRadius: "12px",
+            boxShadow: "0 4px 12px rgba(0, 0, 0, 0.2)",
+            width: "300px",
+          }}
+        >
+          <h2 style={{ marginBottom: "16px", textAlign: "center" }}>Login</h2>
+
+          <label style={{ display: "block", marginBottom: "8px" }}>
+            Username
+            <input
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "8px",
+                marginTop: "4px",
+                borderRadius: "8px",
+                border: "1px solid #374151",
+                background: "#0f172a",
+                color: "#f9fafb",
+              }}
+            />
+          </label>
+
+          <label style={{ display: "block", marginBottom: "16px" }}>
+            Password
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "8px",
+                marginTop: "4px",
+                borderRadius: "8px",
+                border: "1px solid #374151",
+                background: "#0f172a",
+                color: "#f9fafb",
+              }}
+            />
+          </label>
+
+          {loginError && (
+            <p style={{ color: "#f87171", marginBottom: "16px" }}>{loginError}</p>
+          )}
+
+          <button
+            type="submit"
+            style={{
+              width: "100%",
+              padding: "10px",
+              borderRadius: "8px",
+              background: "#22c55e",
+              color: "#022c22",
+              fontWeight: "bold",
+              border: "none",
+            }}
+          >
+            Login
+          </button>
+        </form>
+      </div>
+    );
+  }
+
+  async function handleEnableTcpIpAll() {
+    setTcpipLoading(true);
+    setTcpipStatus("");
+
+    try {
+      const res = await fetch("/api/auto-connect", {
+        method: "POST",
+      });
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.error);
+
+      setTcpipStatus(data.message);
+      addLog("TCP/IP enabled for all devices");
+      addLog(data.output);
+
+      // Refresh device list
+      setTimeout(() => handleScanDevices(), 3000);
+    } catch (err) {
+      setTcpipStatus("Error: " + err.message);
+      addLog("TCP/IP error: " + err.message);
+    }
+
+    setTcpipLoading(false);
+  }
+
   return (
     <div
       style={{
@@ -324,6 +500,29 @@ export default function Home() {
         color: "#f9fafb",
       }}
     >
+      {/* LOGOUT BUTTON */}
+      <button
+        onClick={handleLogout}
+        style={{
+          position: "fixed", // Memastikan tombol tetap terlihat
+          top: "16px",
+          right: "16px",
+          padding: "10px 20px",
+          borderRadius: "8px",
+          background: "#ef4444",
+          color: "#fff",
+          fontWeight: "bold",
+          border: "none",
+          cursor: "pointer",
+          zIndex: 9999, // Z-index tinggi untuk memastikan tombol di atas elemen lain
+        }}
+      >
+        Logout
+      </button>
+      <script>
+        {console.log("DEBUG: Tombol logout dirender")}
+      </script>
+
       {/* SIDEBAR */}
       <Sidebar active={activeSection} onChange={setActiveSection} />
 
@@ -357,7 +556,7 @@ export default function Home() {
         >
           <div>
             <div style={{ fontSize: "22px", fontWeight: 700 }}>
-              ADB Multi-Device Dashboard
+              OPS AUTOMATION SOSIAL MEDIA
             </div>
             <div style={{ fontSize: "13px", opacity: 0.7 }}>
               Monitoring, pairing, automation untuk banyak device.
@@ -365,16 +564,7 @@ export default function Home() {
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <span
-              style={{
-                width: 9,
-                height: 9,
-                borderRadius: 999,
-                background: "#22c55e",
-                boxShadow: "0 0 8px #22c55e",
-              }}
-            />
-            <span style={{ opacity: 0.8 }}>ADB Daemon</span>
+            {/* Bacaan ADB Daemon dihapus */}
           </div>
         </div>
 
@@ -436,6 +626,25 @@ export default function Home() {
               </button>
             </div>
 
+            <button
+              onClick={handleEnableTcpIpAll}
+              disabled={tcpipLoading}
+              style={{
+                marginTop: 10,
+                padding: "7px 14px",
+                borderRadius: 999,
+                background: "#22c55e",
+                color: "#022c22",
+                fontWeight: 600,
+              }}
+            >
+              {tcpipLoading ? "Enabling TCP/IP..." : "Enable TCP/IP (All Devices)"}
+            </button>
+
+            {tcpipStatus && (
+              <p style={{ marginTop: 10, opacity: 0.9 }}>{tcpipStatus}</p>
+            )}
+
             {/* DEVICE LIST */}
             <div
               style={{
@@ -487,17 +696,17 @@ export default function Home() {
                     </div>
 
                     <button
-                      onClick={() => handleRunForDevice(d.serial)}
-                      style={{
-                        padding: "6px 14px",
-                        borderRadius: 999,
-                        background: "#22c55e",
-                        color: "#022c22",
-                        fontWeight: 700,
-                      }}
-                    >
-                      Run script
-                    </button>
+                          onClick={() => handleDisconnect(d.serial)}
+                          style={{
+                            padding: "6px 14px",
+                            borderRadius: 999,
+                            background: "#ef4444",
+                            color: "white",
+                            fontWeight: 700,
+                          }}
+                        >
+                          Disconnect
+                        </button>
                   </div>
                 ))
               )}

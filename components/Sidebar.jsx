@@ -29,16 +29,7 @@ export default function Sidebar({ active, onChange }) {
     >
       {/* Logo */}
       <div style={{ marginBottom: "10px" }}>
-        <div
-          style={{
-            fontSize: "20px",
-            fontWeight: 700,
-            color: "var(--neon-green)",
-            textShadow: "var(--glow-green)",
-          }}
-        >
-          ADB STUDIO
-        </div>
+        <div style={{ fontSize: "22px", fontWeight: 700 }}>OPS AUTOMATION</div>
         <div style={{ opacity: 0.6, fontSize: "12px" }}>
           Multi-Device Automation
         </div>

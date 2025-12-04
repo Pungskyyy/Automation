@@ -1,59 +1,52 @@
 "use client";
 
-import QRCode from "react-qr-code";
+export default function PairingQR({ qr, onClose }) {
 
-export default function PairingQR({ pairIpPort, pairCode, onClose }) {
+  const containerStyle = {
+    position: "fixed",
+    inset: 0,
+    background: "rgba(0,0,0,0.6)",
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 9999,
+  };
 
-  // QR FORMAT fix: tambah S:adb → wajib untuk Pixel
-  const qrValue = `WIFI:T:ADB;S:adb;P:${pairCode};A:${pairIpPort};;`;
+  const boxStyle = {
+    background: "#0f172a",
+    borderRadius: 16,
+    padding: "24px 32px",
+    border: "1px solid #1e293b",
+    textAlign: "center",
+    color: "white",
+    minWidth: 280,
+  };
+
+  const closeBtn = {
+    marginTop: 16,
+    padding: "6px 16px",
+    borderRadius: 999,
+    background: "#ef4444",
+    color: "white",
+    fontWeight: 700,
+  };
 
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "#000000cc",
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center",
-        zIndex: 99999,
-      }}
-    >
-      <div
-        style={{
-          padding: 20,
-          background: "#0f172a",
-          borderRadius: 16,
-          boxShadow: "0 0 20px #00ff9d55",
-          width: 300,
-          textAlign: "center",
-        }}
-      >
-        <h3 style={{ color: "#00fca8", marginBottom: 10 }}>QR Pairing</h3>
+    <div style={containerStyle}>
+      <div style={boxStyle}>
+        <h3 style={{ marginBottom: 12 }}>Scan QR Pairing</h3>
 
-        <QRCode
-          value={qrValue}
-          size={220}
-          style={{ background: "white", padding: 10, borderRadius: 10 }}
-        />
+        {qr ? (
+          <img
+            src={qr}
+            style={{ width: 220, height: 220, background: "white", borderRadius: 8 }}
+            alt="qr"
+          />
+        ) : (
+          <p style={{ opacity: 0.7 }}>QR tidak tersedia</p>
+        )}
 
-        <p style={{ marginTop: 10, fontSize: 11, opacity: 0.6 }}>
-          {qrValue}
-        </p>
-
-        <button
-          onClick={onClose}
-          style={{
-            marginTop: 14,
-            padding: "8px 16px",
-            background: "#00fca8",
-            color: "#00120b",
-            borderRadius: 8,
-            fontWeight: 700,
-            cursor: "pointer",
-            width: "100%",
-          }}
-        >
+        <button onClick={onClose} style={closeBtn}>
           Tutup
         </button>
       </div>

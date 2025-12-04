@@ -1,4 +1,5 @@
 {
-  "/api/tiktok-comment/route": "app/api/tiktok-comment/route.js",
-  "/page": "app/page.js"
+  "/page": "app/page.js",
+  "/api/auto-connect/route": "app/api/auto-connect/route.js",
+  "/api/devices/route": "app/api/devices/route.js"
 }
