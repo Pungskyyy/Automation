@@ -37,7 +37,24 @@ export default function Home() {
   const [massRunning, setMassRunning] = useState(false);
   const [massProgress, setMassProgress] = useState(0);
 
+  // Loading states untuk setiap aksi
+  const [tiktokVideoLoading, setTiktokVideoLoading] = useState(false);
+  const [tiktokPostLoading, setTiktokPostLoading] = useState(false);
+  const [igPostLoading, setIgPostLoading] = useState(false);
+  const [igReelsLoading, setIgReelsLoading] = useState(false);
+
   // TikTok / IG States
+  const [tiktokVideoUrl, setTikTokVideoUrl] = useState("");
+  const [tiktokVideoComment, setTikTokVideoComment] = useState("");
+  const [tiktokPostUrl, setTiktokPostUrl] = useState("");
+  const [tiktokPostComment, setTikTokPostComment] = useState("");
+  
+  const [igPostUrl, setIgPostUrl] = useState("");
+  const [igPostComment, setIgPostComment] = useState("");
+  const [igReelsUrl, setIgReelsUrl] = useState("");
+  const [igReelsComment, setIgReelsComment] = useState("");
+
+  // Backward compatibility (untuk section lama yang masih ada)
   const [tiktokUrl, setTikTokUrl] = useState("");
   const [tiktokComment, setTikTokComment] = useState("");
   const [igUrl, setIgUrl] = useState("");
@@ -141,24 +158,51 @@ export default function Home() {
   // Single Comment TikTok
   // ============================
   async function sendTikTokComment() {
+    console.log("[DEBUG] sendTikTokComment called");
+    console.log("[DEBUG] tiktokUrl:", tiktokUrl);
+    console.log("[DEBUG] tiktokComment:", tiktokComment);
+    console.log("[DEBUG] selectedDevices:", selectedDevices);
+    console.log("[DEBUG] devices:", devices);
+
     if (!tiktokUrl || !tiktokComment) {
       addLog("TikTok: URL atau komentar kosong");
       return;
     }
 
+    // Gunakan device yang terselect, atau device pertama yang tersedia
+    const targetSerial = selectedDevices.length > 0 
+      ? selectedDevices[0] 
+      : (devices.length > 0 ? devices[0].serial : null);
+
+    if (!targetSerial) {
+      addLog("TikTok: Tidak ada device tersedia. Scan device terlebih dahulu.");
+      return;
+    }
+
+    console.log("[DEBUG] Sending to device:", targetSerial);
+
     try {
-      await fetch("/api/tiktok-comment", {
+      const response = await fetch("/api/tiktok-comment", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           videoUrl: tiktokUrl,
           comment: tiktokComment,
-          coords: tiktokCoords
+          coords: tiktokCoords,
+          serial: targetSerial,
         }),
       });
 
-      addLog("Komentar TikTok terkirim");
+      const data = await response.json();
+      console.log("[DEBUG] API Response:", data);
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to send comment");
+      }
+
+      addLog(`Komentar TikTok terkirim ke ${targetSerial}`);
     } catch (err) {
+      console.error("[DEBUG] Error:", err);
       addLog("Error TikTok: " + err.message);
     }
   }
@@ -166,9 +210,19 @@ export default function Home() {
   // ============================
   // Single Comment Instagram
   // ============================
-  async function sendInstagramComment() {
+  async function sendInstagramComment(type = "post") {
     if (!igUrl || !igComment) {
       addLog("Instagram: URL atau komentar kosong");
+      return;
+    }
+
+    // Gunakan device yang terselect, atau device pertama yang tersedia
+    const targetSerial = selectedDevices.length > 0 
+      ? selectedDevices[0] 
+      : (devices.length > 0 ? devices[0].serial : null);
+
+    if (!targetSerial) {
+      addLog("Instagram: Tidak ada device tersedia. Scan device terlebih dahulu.");
       return;
     }
 
@@ -179,13 +233,190 @@ export default function Home() {
         body: JSON.stringify({
           postUrl: igUrl,
           comment: igComment,
-          coords: igCoords
+          coords: igCoords,
+          serial: targetSerial,
+          type: type, // "post" or "reels"
         }),
       });
 
-      addLog("Komentar Instagram terkirim");
+      const typeLabel = type === "reels" ? "Reels" : "Post";
+      addLog(`Komentar Instagram ${typeLabel} terkirim ke ${targetSerial}`);
     } catch (err) {
       addLog("Error IG: " + err.message);
+    }
+  }
+
+  // ============================
+  // TikTok Video Comment
+  // ============================
+  async function sendTikTokVideoComment() {
+    console.log("[DEBUG] sendTikTokVideoComment called");
+    
+    if (!tiktokVideoUrl || !tiktokVideoComment) {
+      addLog("TikTok Video: URL atau komentar kosong");
+      return;
+    }
+
+    const targetSerial = selectedDevices.length > 0 
+      ? selectedDevices[0] 
+      : (devices.length > 0 ? devices[0].serial : null);
+
+    if (!targetSerial) {
+      addLog("TikTok Video: Tidak ada device tersedia. Scan device terlebih dahulu.");
+      return;
+    }
+
+    setTiktokVideoLoading(true);
+
+    try {
+      const response = await fetch("/api/tiktok-comment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          videoUrl: tiktokVideoUrl,
+          comment: tiktokVideoComment,
+          coords: tiktokCoords,
+          serial: targetSerial,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Failed to send comment");
+
+      addLog(`✅ Komentar TikTok Video terkirim ke ${targetSerial}`);
+    } catch (err) {
+      console.error("[DEBUG] Error:", err);
+      addLog("❌ Error TikTok Video: " + err.message);
+    } finally {
+      setTiktokVideoLoading(false);
+    }
+  }
+
+  // ============================
+  // TikTok Post Comment
+  // ============================
+  async function sendTikTokPostComment() {
+    console.log("[DEBUG] sendTikTokPostComment called");
+    
+    if (!tiktokPostUrl || !tiktokPostComment) {
+      addLog("TikTok Post: URL atau komentar kosong");
+      return;
+    }
+
+    const targetSerial = selectedDevices.length > 0 
+      ? selectedDevices[0] 
+      : (devices.length > 0 ? devices[0].serial : null);
+
+    if (!targetSerial) {
+      addLog("TikTok Post: Tidak ada device tersedia. Scan device terlebih dahulu.");
+      return;
+    }
+
+    setTiktokPostLoading(true);
+
+    try {
+      const response = await fetch("/api/tiktok-comment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          videoUrl: tiktokPostUrl,
+          comment: tiktokPostComment,
+          coords: tiktokCoords,
+          serial: targetSerial,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Failed to send comment");
+
+      addLog(`✅ Komentar TikTok Post terkirim ke ${targetSerial}`);
+    } catch (err) {
+      console.error("[DEBUG] Error:", err);
+      addLog("❌ Error TikTok Post: " + err.message);
+    } finally {
+      setTiktokPostLoading(false);
+    }
+  }
+
+  // ============================
+  // Instagram Post Comment
+  // ============================
+  async function sendInstagramPostComment() {
+    if (!igPostUrl || !igPostComment) {
+      addLog("Instagram Post: URL atau komentar kosong");
+      return;
+    }
+
+    const targetSerial = selectedDevices.length > 0 
+      ? selectedDevices[0] 
+      : (devices.length > 0 ? devices[0].serial : null);
+
+    if (!targetSerial) {
+      addLog("Instagram Post: Tidak ada device tersedia. Scan device terlebih dahulu.");
+      return;
+    }
+
+    setIgPostLoading(true);
+
+    try {
+      await fetch("/api/ig-comment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          postUrl: igPostUrl,
+          comment: igPostComment,
+          coords: igCoords,
+          serial: targetSerial,
+          type: "post",
+        }),
+      });
+
+      addLog(`✅ Komentar Instagram Post terkirim ke ${targetSerial}`);
+    } catch (err) {
+      addLog("❌ Error Instagram Post: " + err.message);
+    } finally {
+      setIgPostLoading(false);
+    }
+  }
+
+  // ============================
+  // Instagram Reels Comment
+  // ============================
+  async function sendInstagramReelsComment() {
+    if (!igReelsUrl || !igReelsComment) {
+      addLog("Instagram Reels: URL atau komentar kosong");
+      return;
+    }
+
+    const targetSerial = selectedDevices.length > 0 
+      ? selectedDevices[0] 
+      : (devices.length > 0 ? devices[0].serial : null);
+
+    if (!targetSerial) {
+      addLog("Instagram Reels: Tidak ada device tersedia. Scan device terlebih dahulu.");
+      return;
+    }
+
+    setIgReelsLoading(true);
+
+    try {
+      await fetch("/api/ig-comment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          postUrl: igReelsUrl,
+          comment: igReelsComment,
+          coords: igCoords,
+          serial: targetSerial,
+          type: "reels",
+        }),
+      });
+
+      addLog(`✅ Komentar Instagram Reels terkirim ke ${targetSerial}`);
+    } catch (err) {
+      addLog("❌ Error Instagram Reels: " + err.message);
+    } finally {
+      setIgReelsLoading(false);
     }
   }
 
@@ -231,7 +462,7 @@ export default function Home() {
   // ============================
   // MASS COMMENT INSTAGRAM
   // ============================
-  async function massSendInstagram() {
+  async function massSendInstagram(type = "post") {
     if (!igUrl || !igComment) return addLog("URL / Comment kosong");
     if (selectedDevices.length === 0) return addLog("Tidak ada device dipilih");
 
@@ -250,12 +481,14 @@ export default function Home() {
             comment: igComment,
             coords: igCoords,
             serial,
+            type: type, // "post" or "reels"
           }),
         });
 
         done++;
         setMassProgress(Math.round((done / selectedDevices.length) * 100));
-        addLog(`IG mass → ${serial} OK`);
+        const typeLabel = type === "reels" ? "Reels" : "Post";
+        addLog(`IG ${typeLabel} mass → ${serial} OK`);
       } catch (err) {
         addLog(`IG mass → ${serial} ERROR`);
       }
@@ -264,7 +497,162 @@ export default function Home() {
     }
 
     setMassRunning(false);
-    addLog("Mass comment IG selesai");
+    const typeLabel = type === "reels" ? "Reels" : "Post";
+    addLog(`Mass comment Instagram ${typeLabel} selesai`);
+  }
+
+  // ============================
+  // MASS COMMENT - TikTok Video
+  // ============================
+  async function massSendTikTokVideo() {
+    if (!tiktokVideoUrl || !tiktokVideoComment) return addLog("URL / Comment kosong");
+    if (selectedDevices.length === 0) return addLog("Tidak ada device dipilih");
+
+    setMassRunning(true);
+    setMassProgress(0);
+    let done = 0;
+
+    for (const serial of selectedDevices) {
+      try {
+        await fetch("/api/tiktok-comment", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            videoUrl: tiktokVideoUrl,
+            comment: tiktokVideoComment,
+            coords: tiktokCoords,
+            serial,
+          }),
+        });
+
+        done++;
+        setMassProgress(Math.round((done / selectedDevices.length) * 100));
+        addLog(`TikTok Video mass → ${serial} OK`);
+      } catch (err) {
+        addLog(`TikTok Video mass → ${serial} ERROR`);
+      }
+
+      await new Promise((r) => setTimeout(r, 800));
+    }
+
+    setMassRunning(false);
+    addLog("Mass comment TikTok Video selesai");
+  }
+
+  // ============================
+  // MASS COMMENT - TikTok Post
+  // ============================
+  async function massSendTikTokPost() {
+    if (!tiktokPostUrl || !tiktokPostComment) return addLog("URL / Comment kosong");
+    if (selectedDevices.length === 0) return addLog("Tidak ada device dipilih");
+
+    setMassRunning(true);
+    setMassProgress(0);
+    let done = 0;
+
+    for (const serial of selectedDevices) {
+      try {
+        await fetch("/api/tiktok-comment", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            videoUrl: tiktokPostUrl,
+            comment: tiktokPostComment,
+            coords: tiktokCoords,
+            serial,
+          }),
+        });
+
+        done++;
+        setMassProgress(Math.round((done / selectedDevices.length) * 100));
+        addLog(`TikTok Post mass → ${serial} OK`);
+      } catch (err) {
+        addLog(`TikTok Post mass → ${serial} ERROR`);
+      }
+
+      await new Promise((r) => setTimeout(r, 800));
+    }
+
+    setMassRunning(false);
+    addLog("Mass comment TikTok Post selesai");
+  }
+
+  // ============================
+  // MASS COMMENT - Instagram Post
+  // ============================
+  async function massSendInstagramPost() {
+    if (!igPostUrl || !igPostComment) return addLog("URL / Comment kosong");
+    if (selectedDevices.length === 0) return addLog("Tidak ada device dipilih");
+
+    setMassRunning(true);
+    setMassProgress(0);
+    let done = 0;
+
+    for (const serial of selectedDevices) {
+      try {
+        await fetch("/api/ig-comment", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            postUrl: igPostUrl,
+            comment: igPostComment,
+            coords: igCoords,
+            serial,
+            type: "post",
+          }),
+        });
+
+        done++;
+        setMassProgress(Math.round((done / selectedDevices.length) * 100));
+        addLog(`Instagram Post mass → ${serial} OK`);
+      } catch (err) {
+        addLog(`Instagram Post mass → ${serial} ERROR`);
+      }
+
+      await new Promise((r) => setTimeout(r, 800));
+    }
+
+    setMassRunning(false);
+    addLog("Mass comment Instagram Post selesai");
+  }
+
+  // ============================
+  // MASS COMMENT - Instagram Reels
+  // ============================
+  async function massSendInstagramReels() {
+    if (!igReelsUrl || !igReelsComment) return addLog("URL / Comment kosong");
+    if (selectedDevices.length === 0) return addLog("Tidak ada device dipilih");
+
+    setMassRunning(true);
+    setMassProgress(0);
+    let done = 0;
+
+    for (const serial of selectedDevices) {
+      try {
+        await fetch("/api/ig-comment", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            postUrl: igReelsUrl,
+            comment: igReelsComment,
+            coords: igCoords,
+            serial,
+            type: "reels",
+          }),
+        });
+
+        done++;
+        setMassProgress(Math.round((done / selectedDevices.length) * 100));
+        addLog(`Instagram Reels mass → ${serial} OK`);
+      } catch (err) {
+        addLog(`Instagram Reels mass → ${serial} ERROR`);
+      }
+
+      await new Promise((r) => setTimeout(r, 800));
+    }
+
+    setMassRunning(false);
+    addLog("Mass comment Instagram Reels selesai");
   }
 
   // ============================
@@ -953,7 +1341,7 @@ export default function Home() {
             </label>
 
             <button
-              onClick={sendInstagramComment}
+              onClick={() => sendInstagramComment("post")}
               style={{
                 marginTop: 14,
                 padding: "10px",
@@ -968,7 +1356,7 @@ export default function Home() {
 
             {/* MASS COMMENT IG */}
             <button
-              onClick={massSendInstagram}
+              onClick={() => massSendInstagram("post")}
               disabled={massRunning}
               style={{
                 marginTop: 14,
@@ -981,6 +1369,435 @@ export default function Home() {
               }}
             >
               {massRunning ? "Sending to all devices..." : "Mass Comment Instagram"}
+            </button>
+
+            {massRunning && (
+              <div
+                style={{
+                  marginTop: 10,
+                  width: "100%",
+                  height: "10px",
+                  background: "#1e293b",
+                  borderRadius: "8px",
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    width: `${massProgress}%`,
+                    height: "100%",
+                    background: "#00fca8",
+                    transition: "0.25s",
+                  }}
+                />
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* ======================= INSTAGRAM POST */}
+        {activeSection === "instagram-post" && (
+          <section
+            style={{
+              background: cardBg,
+              padding: 18,
+              borderRadius: 16,
+              border: `1px solid ${cardBorder}`,
+            }}
+          >
+            <h3>📸 Auto Comment Instagram Post</h3>
+
+            <label style={{ marginTop: 12, display: "block" }}>
+              Link Post Instagram
+              <input
+                value={igPostUrl}
+                onChange={(e) => setIgPostUrl(e.target.value)}
+                placeholder="https://instagram.com/p/xxxx"
+                style={{
+                  width: "100%",
+                  padding: 10,
+                  background: shellBg,
+                  borderRadius: 10,
+                  border: "1px solid #374151",
+                  color: "white",
+                  marginTop: 5,
+                }}
+              />
+            </label>
+
+            <label style={{ marginTop: 12, display: "block" }}>
+              Komentar
+              <input
+                value={igPostComment}
+                onChange={(e) => setIgPostComment(e.target.value)}
+                placeholder="Tulis komentar untuk Instagram Post..."
+                style={{
+                  width: "100%",
+                  padding: 10,
+                  background: shellBg,
+                  borderRadius: 10,
+                  border: "1px solid #374151",
+                  color: "white",
+                  marginTop: 5,
+                }}
+              />
+            </label>
+
+            <button
+              onClick={() => sendInstagramPostComment()}
+              disabled={igPostLoading}
+              style={{
+                marginTop: 14,
+                padding: "10px 20px",
+                background: igPostLoading ? "#4b5563" : "#00fca8",
+                borderRadius: 999,
+                fontWeight: 700,
+                color: "#00150a",
+                width: "100%",
+                cursor: igPostLoading ? "not-allowed" : "pointer",
+                opacity: igPostLoading ? 0.7 : 1,
+                transition: "all 0.3s ease",
+              }}
+            >
+              {igPostLoading ? "⏳ Mengirim..." : "✅ Kirim Komentar Instagram Post"}
+            </button>
+
+            <button
+              onClick={() => massSendInstagramPost()}
+              disabled={massRunning}
+              style={{
+                marginTop: 14,
+                padding: "10px 20px",
+                width: "100%",
+                background: "#1d4ed8",
+                borderRadius: 999,
+                fontWeight: 700,
+                color: "white",
+              }}
+            >
+              {massRunning ? "Mengirim ke semua device..." : "Mass Comment Instagram Post"}
+            </button>
+
+            {massRunning && (
+              <div
+                style={{
+                  marginTop: 10,
+                  width: "100%",
+                  height: "10px",
+                  background: "#1e293b",
+                  borderRadius: "8px",
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    width: `${massProgress}%`,
+                    height: "100%",
+                    background: "#00fca8",
+                    transition: "0.25s",
+                  }}
+                />
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* ======================= INSTAGRAM REELS */}
+        {activeSection === "instagram-reels" && (
+          <section
+            style={{
+              background: cardBg,
+              padding: 18,
+              borderRadius: 16,
+              border: `1px solid ${cardBorder}`,
+            }}
+          >
+            <h3>🎬 Auto Comment Instagram Reels</h3>
+
+            <label style={{ marginTop: 12, display: "block" }}>
+              Link Instagram Reels
+              <input
+                value={igReelsUrl}
+                onChange={(e) => setIgReelsUrl(e.target.value)}
+                placeholder="https://instagram.com/reel/xxxx"
+                style={{
+                  width: "100%",
+                  padding: 10,
+                  background: shellBg,
+                  borderRadius: 10,
+                  border: "1px solid #374151",
+                  color: "white",
+                  marginTop: 5,
+                }}
+              />
+            </label>
+
+            <label style={{ marginTop: 12, display: "block" }}>
+              Komentar
+              <input
+                value={igReelsComment}
+                onChange={(e) => setIgReelsComment(e.target.value)}
+                placeholder="Tulis komentar untuk Instagram Reels..."
+                style={{
+                  width: "100%",
+                  padding: 10,
+                  background: shellBg,
+                  borderRadius: 10,
+                  border: "1px solid #374151",
+                  color: "white",
+                  marginTop: 5,
+                }}
+              />
+            </label>
+
+            <button
+              onClick={() => sendInstagramReelsComment()}
+              disabled={igReelsLoading}
+              style={{
+                marginTop: 14,
+                padding: "10px 20px",
+                background: igReelsLoading ? "#4b5563" : "#00fca8",
+                borderRadius: 999,
+                fontWeight: 700,
+                color: "#00150a",
+                width: "100%",
+                cursor: igReelsLoading ? "not-allowed" : "pointer",
+                opacity: igReelsLoading ? 0.7 : 1,
+                transition: "all 0.3s ease",
+              }}
+            >
+              {igReelsLoading ? "⏳ Mengirim..." : "✅ Kirim Komentar Instagram Reels"}
+            </button>
+
+            <button
+              onClick={() => massSendInstagramReels()}
+              disabled={massRunning}
+              style={{
+                marginTop: 14,
+                padding: "10px 20px",
+                width: "100%",
+                background: "#1d4ed8",
+                borderRadius: 999,
+                fontWeight: 700,
+                color: "white",
+              }}
+            >
+              {massRunning ? "Mengirim ke semua device..." : "Mass Comment Instagram Reels"}
+            </button>
+
+            {massRunning && (
+              <div
+                style={{
+                  marginTop: 10,
+                  width: "100%",
+                  height: "10px",
+                  background: "#1e293b",
+                  borderRadius: "8px",
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    width: `${massProgress}%`,
+                    height: "100%",
+                    background: "#00fca8",
+                    transition: "0.25s",
+                  }}
+                />
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* ======================= TIKTOK VIDEO */}
+        {activeSection === "tiktok-video" && (
+          <section
+            style={{
+              background: cardBg,
+              padding: 18,
+              borderRadius: 16,
+              border: `1px solid ${cardBorder}`,
+            }}
+          >
+            <h3>🎵 Auto Comment TikTok Video</h3>
+
+            <label style={{ marginTop: 12, display: "block" }}>
+              Link Video TikTok
+              <input
+                value={tiktokVideoUrl}
+                onChange={(e) => setTikTokVideoUrl(e.target.value)}
+                placeholder="https://www.tiktok.com/@user/video/xxxx"
+                style={{
+                  width: "100%",
+                  padding: 10,
+                  background: shellBg,
+                  borderRadius: 10,
+                  border: "1px solid #374151",
+                  color: "white",
+                  marginTop: 5,
+                }}
+              />
+            </label>
+
+            <label style={{ marginTop: 12, display: "block" }}>
+              Komentar
+              <input
+                value={tiktokVideoComment}
+                onChange={(e) => setTikTokVideoComment(e.target.value)}
+                placeholder="Tulis komentar untuk TikTok Video..."
+                style={{
+                  width: "100%",
+                  padding: 10,
+                  background: shellBg,
+                  borderRadius: 10,
+                  border: "1px solid #374151",
+                  color: "white",
+                  marginTop: 5,
+                }}
+              />
+            </label>
+
+            <button
+              onClick={sendTikTokVideoComment}
+              disabled={tiktokVideoLoading}
+              style={{
+                marginTop: 14,
+                padding: "10px 20px",
+                background: tiktokVideoLoading ? "#4b5563" : "#00fca8",
+                borderRadius: 999,
+                fontWeight: 700,
+                color: "#00150a",
+                width: "100%",
+                cursor: tiktokVideoLoading ? "not-allowed" : "pointer",
+                opacity: tiktokVideoLoading ? 0.7 : 1,
+                transition: "all 0.3s ease",
+                transform: tiktokVideoLoading ? "scale(0.98)" : "scale(1)",
+              }}
+            >
+              {tiktokVideoLoading ? "⏳ Mengirim..." : "✅ Kirim Komentar TikTok Video"}
+            </button>
+
+            <button
+              onClick={massSendTikTokVideo}
+              disabled={massRunning}
+              style={{
+                marginTop: 14,
+                padding: "10px 20px",
+                width: "100%",
+                background: "#1d4ed8",
+                borderRadius: 999,
+                fontWeight: 700,
+                color: "white",
+              }}
+            >
+              {massRunning ? "Mengirim ke semua device..." : "Mass Comment TikTok Video"}
+            </button>
+
+            {massRunning && (
+              <div
+                style={{
+                  marginTop: 10,
+                  width: "100%",
+                  height: "10px",
+                  background: "#1e293b",
+                  borderRadius: "8px",
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    width: `${massProgress}%`,
+                    height: "100%",
+                    background: "#00fca8",
+                    transition: "0.25s",
+                  }}
+                />
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* ======================= TIKTOK POST */}
+        {activeSection === "tiktok-post" && (
+          <section
+            style={{
+              background: cardBg,
+              padding: 18,
+              borderRadius: 16,
+              border: `1px solid ${cardBorder}`,
+            }}
+          >
+            <h3>📱 Auto Comment TikTok Post</h3>
+
+            <label style={{ marginTop: 12, display: "block" }}>
+              Link TikTok Post
+              <input
+                value={tiktokPostUrl}
+                onChange={(e) => setTiktokPostUrl(e.target.value)}
+                placeholder="https://www.tiktok.com/@user/photo/xxxx"
+                style={{
+                  width: "100%",
+                  padding: 10,
+                  background: shellBg,
+                  borderRadius: 10,
+                  border: "1px solid #374151",
+                  color: "white",
+                  marginTop: 5,
+                }}
+              />
+            </label>
+
+            <label style={{ marginTop: 12, display: "block" }}>
+              Komentar
+              <input
+                value={tiktokPostComment}
+                onChange={(e) => setTikTokPostComment(e.target.value)}
+                placeholder="Tulis komentar untuk TikTok Post..."
+                style={{
+                  width: "100%",
+                  padding: 10,
+                  background: shellBg,
+                  borderRadius: 10,
+                  border: "1px solid #374151",
+                  color: "white",
+                  marginTop: 5,
+                }}
+              />
+            </label>
+
+            <button
+              onClick={sendTikTokPostComment}
+              disabled={tiktokPostLoading}
+              style={{
+                marginTop: 14,
+                padding: "10px 20px",
+                background: tiktokPostLoading ? "#4b5563" : "#00fca8",
+                borderRadius: 999,
+                fontWeight: 700,
+                color: "#00150a",
+                width: "100%",
+                cursor: tiktokPostLoading ? "not-allowed" : "pointer",
+                opacity: tiktokPostLoading ? 0.7 : 1,
+                transition: "all 0.3s ease",
+              }}
+            >
+              {tiktokPostLoading ? "⏳ Mengirim..." : "✅ Kirim Komentar TikTok Post"}
+            </button>
+
+            <button
+              onClick={massSendTikTokPost}
+              disabled={massRunning}
+              style={{
+                marginTop: 14,
+                padding: "10px 20px",
+                width: "100%",
+                background: "#1d4ed8",
+                borderRadius: 999,
+                fontWeight: 700,
+                color: "white",
+              }}
+            >
+              {massRunning ? "Mengirim ke semua device..." : "Mass Comment TikTok Post"}
             </button>
 
             {massRunning && (

@@ -2,319 +2,210 @@ import { NextResponse } from "next/server";
 import { exec } from "child_process";
 import fs from "fs";
 import util from "util";
+
 const run = util.promisify(exec);
 
-// ============================================================
-// FALLBACK COORDS (KERJA PASTI, TANPA UI DUMP)
-// ============================================================
-const IG_COORDS = {
-  reels: {
-    comment: { x: 998, y: 1099 },
-    input: { x: 488, y: 1949 },
-    send: { x: 1005, y: 1949 }
-  },
+const FALLBACK = {
   post: {
-    comment: { x: 187, y: 1518 },
-    input: { x: 551, y: 1159 },
-    send: { x: 973, y: 1165 }
-  }
+    comment: { x: 250, y: 1965 },
+    input: { x: 500, y: 1145 },
+    send: { x: 920, y: 1145 },
+  },
+  reels: {
+    comment: { x: 1000, y: 1120 },
+    input: { x: 500, y: 1950 },
+    send: { x: 1000, y: 1950 },
+  },
 };
 
-// Tambahkan palet komentar
-const COMMENT_PALETTE = [
-  "Keren banget!",
-  "Mantap!",
-  "Luar biasa!",
-  "🔥🔥🔥",
-  "Inspiratif!",
-  "Suka banget kontennya!"
-];
+const IG_IDS = {
+  // Instagram Post (Feed)
+  commentButton: "com.instagram.android:id/row_feed_button_comment",
+  inputField: "com.instagram.android:id/layout_comment_thread_edittext",
+  postButton: "com.instagram.android:id/layout_comment_thread_post_button_icon",
+  
+  // Instagram Reels (UPDATED - CORRECT!)
+  reelsCommentButton: "com.instagram.android:id/comment_button",           // Open kolom comment for reels
+  reelsInputField: "com.instagram.android:id/comment_composer_text_view",  // Add comment field for reels
+  reelsPostButton: "com.instagram.android:id/layout_comment_thread_post_button", // Post comment button for reels
+  reelsLikeButton: "com.instagram.android:id/row_comment_like_button",     // Like button (optional)
+};
 
 export async function POST(req) {
+  console.log("[IG] POST handler started");
   try {
-    const { postUrl, comment, serial } = await req.json();
-    const prefix = serial ? `adb -s ${serial}` : "adb";
+    const { comment, postUrl, serial, type } = await req.json();
+    console.log("[IG] Received data:", { comment, postUrl, serial, type });
 
-    if (!postUrl)
-      return NextResponse.json({ error: "URL Instagram tidak boleh kosong" }, { status: 400 });
+    if (!comment) {
+      console.error("[IG] Comment harus diisi");
+      return NextResponse.json({ error: "Comment harus diisi" }, { status: 400 });
+    }
 
-    // Pilih komentar secara acak jika tidak diberikan
-    const selectedComment = comment || COMMENT_PALETTE[Math.floor(Math.random() * COMMENT_PALETTE.length)];
+    if (!postUrl) {
+      console.error("[IG] Post URL harus diisi");
+      return NextResponse.json({ error: "Post URL harus diisi" }, { status: 400 });
+    }
 
-    // ============================================================
-    // OPEN INSTAGRAM
-    // ============================================================
+    if (!serial) {
+      console.error("[IG] Device serial harus diisi");
+      return NextResponse.json({ error: "Device serial harus diisi" }, { status: 400 });
+    }
+
+    const prefix = `adb -s ${serial}`;
+    const isReels = type === "reels";
+    const FB = isReels ? FALLBACK.reels : FALLBACK.post;
+    const IDS = isReels
+      ? {
+          commentButton: IG_IDS.reelsCommentButton,
+          inputField: IG_IDS.reelsInputField,
+          postButton: IG_IDS.reelsPostButton,
+        }
+      : {
+          commentButton: IG_IDS.commentButton,
+          inputField: IG_IDS.inputField,
+          postButton: IG_IDS.postButton,
+        };
+
+    console.log(`[IG] Using device: ${serial}`);
+    console.log("[IG] FORCE STOP IG");
     await adb(`${prefix} shell am force-stop com.instagram.android`);
-    await delay(3000);
+    console.log("[IG] IG stopped successfully");
 
+    console.log("[IG] OPEN URL:", postUrl);
     await adb(`${prefix} shell am start -a android.intent.action.VIEW -d "${postUrl}"`);
-    await delay(15000); // tunggu Reels/Post kebuka
+    console.log("[IG] URL opened successfully");
 
-    // ============================================================
-    // DUMP UI
-    // ============================================================
+    // Wait for Instagram to load
+    await delay(5000);
+
+    console.log("[IG] DUMP UI 1");
     await adb(`${prefix} shell uiautomator dump /sdcard/ig1.xml`);
     await adb(`${prefix} pull /sdcard/ig1.xml`);
+    console.log("[IG] UI dump 1 completed");
 
-    let xml = "";
+    let xml1 = "";
     try {
-      xml = fs.readFileSync("./ig1.xml", "utf8");
-    } catch {
-      xml = "";
+      xml1 = fs.readFileSync("ig1.xml", "utf8");
+      console.log("[IG] XML 1 Loaded Successfully");
+    } catch (err) {
+      console.error("[IG] Failed to load ig1.xml:", err);
     }
 
-    const xmlIsEmpty = !xml || xml.includes("</hierarchy>");
+    /* FIND COMMENT BUTTON */
+    let commentNode = findNode(xml1, [IDS.commentButton]);
+    let commentTap = commentNode?.bounds ? getCenter(commentNode.bounds) : FB.comment;
 
-    let isReels = false;
-
-    // ============================================================
-    // DETECT REELS VIA URL
-    // ============================================================
-    if (postUrl.includes("/reel/")) {
-      isReels = true;
-      console.log("Detected IG REELS via URL");
-    }
-
-    // ============================================================
-    // DETECT REELS via XML if exist
-    // ============================================================
-    if (!xmlIsEmpty && xml.toLowerCase().includes("reel")) {
-      isReels = true;
-    }
-
-    // ============================================================
-    // FALLBACK JIKA XML GAGAL → langsung pakai koordinat
-    // ============================================================
-    if (xmlIsEmpty) {
-      console.log("UI XML kosong → fallback langsung ke koordinat");
-      await commentUsingFallback(prefix, selectedComment, isReels);
-      return NextResponse.json({ success: true, fallback: true });
-    }
-
-    // ============================================================
-    // UI-BASED TAP COMMENT UNTUK REELS
-    // ============================================================
-    if (isReels) {
-      console.log("Detected IG REELS → langsung ke koordinat reels");
-
-      // TAP COMMENT UNTUK REELS
-      await tap(prefix, IG_COORDS.reels.comment.x, IG_COORDS.reels.comment.y);
-      await delay(5000);
-
-      // TAP INPUT UNTUK REELS
-      await tap(prefix, IG_COORDS.reels.input.x, IG_COORDS.reels.input.y);
-      await delay(1500);
-
-      // CLEAR INPUT FIELD
-      for (let i = 0; i < 40; i++) {
-        await adb(`${prefix} shell input keyevent 67`);
-        await delay(15);
-      }
-
-      // INPUT COMMENT UNTUK REELS
-      await typeSlowHumanLike(prefix, selectedComment);
-      await delay(800);
-
-      // TAP SEND UNTUK REELS
-      await tap(prefix, IG_COORDS.reels.send.x, IG_COORDS.reels.send.y);
-      await delay(2500);
-
-      return NextResponse.json({ success: true, reels: true });
-    }
-
-    // ============================================================
-    // UI-BASED TAP COMMENT
-    // ============================================================
-    let commentNode = findNode(xml, ["comment", "respond", "glyph_comment"]);
-
-    let commentTap;
-
-    if (commentNode?.bounds) {
-      commentTap = getCenter(commentNode.bounds);
-    } else {
-      console.log("UI gagal mendeteksi → fallback IG Reels/Post");
-
-      await commentUsingFallback(prefix, selectedComment, isReels);
-      return NextResponse.json({ success: true, fallback: true });
-    }
-
-    // ============================================================
-    // DEBUGGING UNTUK POST COMMENT IG
-    // ============================================================
-    console.log("DEBUG: Memulai proses komentar di Instagram");
-    console.log("DEBUG: URL Post -", postUrl);
-    console.log("DEBUG: Komentar yang akan dikirim -", selectedComment);
-    console.log("DEBUG: Apakah Reels -", isReels);
-
-    // ============================================================
-    // DEBUGGING UNTUK TAP COMMENT
-    // ============================================================
-    console.log("DEBUG: Mencoba TAP COMMENT di koordinat", commentTap);
+    console.log("[IG] TAP COMMENT BUTTON:", commentTap);
     await tap(prefix, commentTap.x, commentTap.y);
-    console.log("DEBUG: TAP COMMENT selesai");
-    await delay(5000);
+    console.log("[IG] Comment button tapped");
 
-    // ============================================================
-    // UI DUMP 2
-    // ============================================================
-    await adb(`${prefix} shell uiautomator dump /sdcard/ig2.xml`);
-    await adb(`${prefix} pull /sdcard/ig2.xml`);
-    let xml2 = fs.readFileSync("./ig2.xml", "utf8");
-
-    let inputNode = findNode(xml2, ["add a comment", "Tambahkan komentar", "edittext"]);
-    let inputTap;
-
-    if (inputNode?.bounds) {
-      inputTap = getCenter(inputNode.bounds);
-    } else {
-      inputTap = isReels ? IG_COORDS.reels.input : IG_COORDS.post.input;
-    }
-
-    // ============================================================
-    // DEBUGGING UNTUK TAP INPUT
-    // ============================================================
-    console.log("DEBUG: Mencoba TAP INPUT di koordinat", inputTap);
-    await tap(prefix, inputTap.x, inputTap.y);
-    console.log("DEBUG: TAP INPUT selesai");
-    await delay(1500);
-
-    // clear anti "W"
-    for (let i = 0; i < 40; i++) {
-      await adb(`${prefix} shell input keyevent 67`);
-      await delay(15);
-    }
-
-    // ============================================================
-    // DEBUGGING UNTUK INPUT COMMENT
-    // ============================================================
-    console.log("DEBUG: Mencoba mengetik komentar", selectedComment);
-    await typeSlowHumanLike(prefix, selectedComment);
-    console.log("DEBUG: Komentar selesai diketik");
-    await delay(800);
-
-    let sendNode = findNode(xml2, ["send", "kirim", "glyph_send"]);
-    let sendTap;
-
-    if (sendNode?.bounds) {
-      sendTap = getCenter(sendNode.bounds);
-    } else {
-      sendTap = isReels ? IG_COORDS.reels.send : IG_COORDS.post.send;
-    }
-
-    // ============================================================
-    // DEBUGGING UNTUK SEND COMMENT
-    // ============================================================
-    console.log("DEBUG: Mencoba TAP SEND COMMENT di koordinat", sendTap);
-    await tap(prefix, sendTap.x, sendTap.y);
-    console.log("DEBUG: TAP SEND COMMENT selesai");
-    await delay(2500);
-
-    // ============================
-    // 4. COMMENT BUTTON
-    // ============================
-    console.log("[4] Comment button");
-    await tap(prefix, 187, 1518);
-    await delay(8000);
-
-    // ============================
-    // 5. INPUT FIELD
-    // ============================
-    console.log("[5] Input field");
-    await tap(prefix, 540, 2013);
     await delay(6000);
 
-    // ============================
-    // 6. TYPE COMMENT
-    // ============================
-    console.log("[6] Type comment…");
-    const safe = selectedComment.replace(/"/g, "'").replace(/ /g, "%s");
-    await adb(`${prefix} shell input text \"${safe}\"`);
-    await delay(5000);
+    /* DUMP UI 2 (input field) */
+    console.log("[IG] DUMP UI 2");
+    await adb(`${prefix} shell uiautomator dump /sdcard/ig2.xml`);
+    await adb(`${prefix} pull /sdcard/ig2.xml`);
+    console.log("[IG] UI dump 2 completed");
 
-    // ============================
-    // 7. SEND COMMENT
-    // ============================
-    console.log("[7] Send comment");
-    await tap(prefix, 973, 2010);
-    await delay(4000);
+    let xml2 = "";
+    try {
+      xml2 = fs.readFileSync("ig2.xml", "utf8");
+      console.log("[IG] XML 2 Loaded Successfully");
+    } catch (err) {
+      console.error("[IG] Failed to load ig2.xml:", err);
+    }
 
-    return NextResponse.json({ success: true, fallback: false });
+    /* FIND INPUT FIELD */
+    let inputNode = findNode(xml2, [IDS.inputField]);
+    let inputTap = inputNode?.bounds ? getCenter(inputNode.bounds) : FB.input;
+
+    console.log("[IG] TAP INPUT FIELD:", inputTap);
+    await tap(prefix, inputTap.x, inputTap.y);
+    console.log("[IG] Input field tapped");
+
+    await delay(1500);
+
+    /* CLEAR INPUT */
+    console.log("[IG] CLEAR INPUT FIELD");
+    for (let i = 0; i < 30; i++) {
+      await adb(`${prefix} shell input keyevent 67`);
+    }
+    console.log("[IG] Input field cleared");
+
+    /* TYPE COMMENT */
+    console.log("[IG] TYPING COMMENT:", comment);
+    for (let c of comment) {
+      await adb(`${prefix} shell input text "${c === " " ? "%s" : c}"`);
+      await delay(60 + Math.random() * 60);
+    }
+    console.log("[IG] Comment typed");
+
+    await delay(700);
+
+    /* FIND SEND BUTTON */
+    let sendNode = findNode(xml2, [IDS.postButton]);
+    let sendTap = sendNode?.bounds ? getCenter(sendNode.bounds) : FB.send;
+
+    console.log("[IG] TAP SEND BUTTON:", sendTap);
+    await tap(prefix, sendTap.x, sendTap.y);
+    console.log("[IG] Send button tapped");
+
+    await delay(3000);
+
+    console.log("[IG] COMMENT SENT SUCCESSFULLY");
+    return NextResponse.json({
+      success: true,
+      message: "Instagram comment berhasil dikirim",
+      serial: serial,
+      postUrl: postUrl,
+      action: "DONE",
+      taps: { commentTap, inputTap, sendTap }
+    });
 
   } catch (err) {
+    console.error("[IG] Error in POST handler:", err);
     return NextResponse.json({ error: err.message }, { status: 500 });
+  } finally {
+    console.log("[IG] POST handler finished");
   }
 }
 
-// ============================================================
-// FALLBACK COMMENT (PASTI JALAN)
-// ============================================================
-async function commentUsingFallback(prefix, comment, isReels) {
-  const pos = isReels ? IG_COORDS.reels : IG_COORDS.post;
-
-  console.log("FALLBACK MODE → direct coordinates");
-
-  await tap(prefix, pos.comment.x, pos.comment.y);
-  await delay(5000);
-
-  await tap(prefix, pos.input.x, pos.input.y);
-  await delay(1000);
-
-  for (let i = 0; i < 40; i++) {
-    await adb(`${prefix} shell input keyevent 67`);
-  }
-
-  await typeSlowHumanLike(prefix, comment);
-  await delay(1000);
-
-  await tap(prefix, pos.send.x, pos.send.y);
-  await delay(2500);
-}
-
-// ============================================================
-async function adb(cmd) {
-  console.log("DEBUG: Menjalankan perintah ADB -", cmd);
+/* UTIL */
+async function adb(c) {
+  console.log("[ADB] Checking devices...");
   try {
-    const result = await run(cmd);
-    console.log("DEBUG: Hasil perintah ADB -", result);
+    const devices = await run("adb devices");
+    console.log("[ADB] Connected devices:", devices.stdout);
+    if (!devices.stdout.includes("device")) {
+      console.error("[ADB] No devices connected.");
+      throw new Error("No devices connected.");
+    }
+  } catch (error) {
+    console.error("[ADB] Failed to check devices:", error.message);
+    throw error;
+  }
+
+  console.log("[ADB] Executing command:", c);
+  try {
+    const result = await run(c);
+    console.log("[ADB] Command output:", result.stdout);
+    if (result.stderr) {
+      console.error("[ADB] Command error output:", result.stderr);
+    }
+    if (!result.stdout && !result.stderr) {
+      console.warn("[ADB] Command executed but no output detected. Check if the device is responsive.");
+    }
     return result;
   } catch (error) {
-    console.error("DEBUG: Error saat menjalankan perintah ADB -", error);
+    console.error("[ADB] Command failed:", c);
+    console.error("[ADB] Error:", error.message);
     throw error;
   }
 }
-
 async function tap(prefix, x, y) {
-  console.log(`DEBUG: Mencoba TAP di koordinat (${x}, ${y})`);
-  try {
-    const result = await adb(`${prefix} shell input tap ${x} ${y}`);
-    console.log(`DEBUG: TAP berhasil di koordinat (${x}, ${y})`);
-    return result;
-  } catch (error) {
-    console.error(`DEBUG: TAP gagal di koordinat (${x}, ${y}) -`, error);
-    throw error;
-  }
+  return adb(`${prefix} shell input tap ${x} ${y}`);
 }
-
-async function typeSlow(prefix, t) {
-  console.log("DEBUG: Memulai mengetik perlahan -", t);
-  for (let c of t) {
-    const charToType = c === " " ? "%s" : c;
-    console.log(`DEBUG: Mengetik karakter - ${charToType}`);
-    await adb(`${prefix} shell input text "${charToType}"`);
-    await delay(40 + Math.random() * 40);
-  }
-}
-
-async function typeSlowHumanLike(prefix, t) {
-  console.log("DEBUG: Memulai mengetik dengan delay seperti manusia -", t);
-  for (let c of t) {
-    const charToType = c === " " ? "%s" : c;
-    console.log(`DEBUG: Mengetik karakter - ${charToType}`);
-    await adb(`${prefix} shell input text "${charToType}"`);
-    await delay(100 + Math.random() * 200); // Delay acak antara 100ms hingga 300ms
-  }
-}
-
 function delay(ms) {
   return new Promise((res) => setTimeout(res, ms));
 }
@@ -323,13 +214,16 @@ function getCenter(bounds) {
   return { x: (n[0] + n[2]) / 2, y: (n[1] + n[3]) / 2 };
 }
 function findNode(xml, keys) {
+  if (!xml) return null;
+
   const re = /<node(.*?)\/>/g;
   let m;
+
   while ((m = re.exec(xml)) !== null) {
     const raw = m[1].toLowerCase();
     if (keys.some(k => raw.includes(k.toLowerCase()))) {
       const b = raw.match(/bounds="(.*?)"/)?.[1];
-      return { bounds: b };
+      return { raw, bounds: b };
     }
   }
   return null;

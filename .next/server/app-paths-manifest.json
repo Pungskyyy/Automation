@@ -1,5 +1,4 @@
 {
   "/page": "app/page.js",
-  "/api/auto-connect/route": "app/api/auto-connect/route.js",
   "/api/devices/route": "app/api/devices/route.js"
 }

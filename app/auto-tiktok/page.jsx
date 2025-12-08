@@ -2,17 +2,28 @@
 
 import { useState } from "react";
 
-export default function AutoTikTok() {
-  const [videoUrl, setVideoUrl] = useState("");
+export default function AutoTikTok({ type }) {
+  const [postUrl, setPostUrl] = useState("");
   const [comment, setComment] = useState("");
 
   async function sendComment() {
-    await fetch("/api/tiktok-comment", {
+    const endpoint = "/api/tiktok-comment";
+    console.log("[Frontend] Sending request to:", endpoint);
+    console.log("[Frontend] Payload:", { comment, postUrl, type });
+
+    const response = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ comment, videoUrl }),
+      body: JSON.stringify({ comment, postUrl, type }),
     });
-    alert("Comment Terkirim!");
+
+    if (response.ok) {
+      console.log("[Frontend] Comment sent successfully!");
+      alert(`Comment TikTok ${type} terkirim!`);
+    } else {
+      console.error("[Frontend] Failed to send comment:", await response.text());
+      alert("Gagal mengirim komentar.");
+    }
   }
 
   return (
@@ -20,9 +31,9 @@ export default function AutoTikTok() {
       <h2>🎵 Auto Comment TikTok</h2>
 
       <input
-        placeholder="Link Video TikTok"
-        value={videoUrl}
-        onChange={(e) => setVideoUrl(e.target.value)}
+        placeholder="Link TikTok"
+        value={postUrl}
+        onChange={(e) => setPostUrl(e.target.value)}
         style={inputStyle}
       />
 

@@ -3,52 +3,56 @@ import adb_utils
 import time
 import sys
 
-def comment_tiktok(serial, comment):
-    print(f"\n=== Device {serial} ===")
+# TikTok Package Names
+TIKTOK_PACKAGES = [
+    "com.ss.android.ugc.trill",       # TikTok International
+    "com.zhiliaoapp.musically",       # TikTok China
+]
 
-    # buka TikTok
-    adb_utils.run(f"adb -s {serial} shell monkey -p com.zhiliaoapp.musically 1")
+# TikTok Resource IDs
+TIKTOK_IDS = {
+    "comment_icon": "com.ss.android.ugc.trill:id/ds4",
+    "comment_input": "com.ss.android.ugc.trill:id/dqp",
+    "send_button": "com.ss.android.ugc.trill:id/dny",
+    "alternative_btn": "com.ss.android.ugc.trill:id/cb7"
+}
+
+def detect_tiktok_package(serial):
+    """Detect which TikTok package is installed on device"""
+    for pkg in TIKTOK_PACKAGES:
+        result = adb_utils.run(f"adb -s {serial} shell pm list packages {pkg}")
+        if pkg in result:
+            print(f"[{serial}] Found TikTok: {pkg}")
+            return pkg
+    
+    print(f"[{serial}] Using default package: {TIKTOK_PACKAGES[0]}")
+    return TIKTOK_PACKAGES[0]
+
+def comment_tiktok_by_id(serial, comment):
+    """Comment TikTok menggunakan Resource ID (lebih reliable)"""
+    print(f"\n=== Device {serial} - Using Resource IDs ===")
+
+    # Detect TikTok package
+    tiktok_pkg = detect_tiktok_package(serial)
+
+    # Buka TikTok
+    print(f"[1] Opening TikTok ({tiktok_pkg})...")
+    adb_utils.run(f"adb -s {serial} shell monkey -p {tiktok_pkg} 1")
     time.sleep(4)
 
-    # buka kolom komentar (koordinat universal TikTok)
-    adb_utils.tap(serial, 540, 1650)
-    time.sleep(2)
+    # ...existing code...
 
-    # klik input comment
-    adb_utils.tap(serial, 300, 1780)
-    time.sleep(1)
+def comment_tiktok(serial, comment):
+    """Original function using coordinates"""
+    print(f"\n=== Device {serial} ===")
 
-    # isi text
-    adb_utils.text(serial, comment)
-    time.sleep(1)
+    # Detect TikTok package
+    tiktok_pkg = detect_tiktok_package(serial)
 
-    # klik tombol send
-    adb_utils.tap(serial, 980, 1780)
-    time.sleep(1)
+    # buka TikTok
+    adb_utils.run(f"adb -s {serial} shell monkey -p {tiktok_pkg} 1")
+    time.sleep(4)
 
-    print(f"[OK] Comment terkirim: {comment}")
+    # ...existing code...
 
-
-def main():
-    comment = sys.argv[1] if len(sys.argv) > 1 else "Test comment by Python bot"
-
-    for d in DEVICES:
-        serial = d["serial"]
-
-        # connect ADB
-        print(adb_utils.connect(serial))
-        time.sleep(1)
-
-        state = adb_utils.check(serial)
-        print("state:", state)
-
-        if "device" not in state:
-            print("[SKIP] Device tidak online")
-            continue
-
-        comment_tiktok(serial, comment)
-        time.sleep(2)
-
-
-if __name__ == "__main__":
-    main()
+# ...existing code...

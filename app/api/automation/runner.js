@@ -1,4 +1,4 @@
-import { runCommentFlow } from "./queue.js";
+import { runCommentFlow, runCommentFlowById } from "./queue.js";
 
 const concurrency = 3; // TASK BERJALAN BERSAMA MAKSIMAL 3
 let running = 0;
@@ -22,8 +22,12 @@ function processQueue() {
   });
 }
 
-export function runForDevices(devices, text) {
+export function runForDevices(devices, text, useResourceId = true) {
   devices.forEach(device => {
-    addTask(() => runCommentFlow(device.serial, text));
+    if (useResourceId) {
+      addTask(() => runCommentFlowById(device.serial, text));
+    } else {
+      addTask(() => runCommentFlow(device.serial, text));
+    }
   });
 }

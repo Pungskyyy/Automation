@@ -2,17 +2,28 @@
 
 import { useState } from "react";
 
-export default function AutoInstagram() {
+export default function AutoInstagram({ type }) {
   const [postUrl, setPostUrl] = useState("");
   const [comment, setComment] = useState("");
 
   async function sendComment() {
-    await fetch("/api/ig-comment", {
+    const endpoint = "/api/ig-comment";
+    console.log("[Frontend] Sending request to:", endpoint);
+    console.log("[Frontend] Payload:", { comment, postUrl, type });
+
+    const response = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ comment, postUrl }),
+      body: JSON.stringify({ comment, postUrl, type }),
     });
-    alert("Comment Instagram terkirim!");
+
+    if (response.ok) {
+      console.log("[Frontend] Comment sent successfully!");
+      alert(`Comment Instagram ${type} terkirim!`);
+    } else {
+      console.error("[Frontend] Failed to send comment:", await response.text());
+      alert("Gagal mengirim komentar.");
+    }
   }
 
   return (
@@ -20,7 +31,7 @@ export default function AutoInstagram() {
       <h2>📸 Auto Comment Instagram</h2>
 
       <input
-        placeholder="Link Post Instagram"
+        placeholder="Link Instagram"
         value={postUrl}
         onChange={(e) => setPostUrl(e.target.value)}
         style={inputStyle}
