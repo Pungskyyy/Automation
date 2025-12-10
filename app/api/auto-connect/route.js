@@ -28,7 +28,9 @@ export async function POST() {
     
     let successCount = 0;
     let failedCount = 0;
+    let alreadyTcpipCount = 0;
     let devices = [];
+    let tcpipDevices = [];
 
     if (csvFiles.length > 0) {
       const latestCsv = path.join(process.cwd(), csvFiles[0]);
@@ -40,20 +42,50 @@ export async function POST() {
         if (status === 'success') {
           successCount++;
           devices.push({ serial, tcp_address });
+        } else if (status === 'already_tcpip') {
+          alreadyTcpipCount++;
+          tcpipDevices.push({ address: tcp_address });
         } else {
           failedCount++;
         }
       }
     }
 
+    let message = `✅ TCP/IP Setup Complete!\n\n`;
+    
+    if (alreadyTcpipCount > 0) {
+      message += `🌐 Already in TCP/IP mode: ${alreadyTcpipCount}\n`;
+      tcpipDevices.forEach(d => {
+        message += `   • ${d.address}\n`;
+      });
+      message += `\n`;
+    }
+    
+    if (successCount > 0) {
+      message += `🔄 Newly converted: ${successCount}\n`;
+      devices.forEach(d => {
+        message += `   ✅ ${d.serial} → ${d.tcp_address}\n`;
+      });
+      message += `\n`;
+    }
+    
+    if (failedCount > 0) {
+      message += `❌ Failed: ${failedCount}\n\n`;
+    }
+    
+    message += `📱 Total devices: ${alreadyTcpipCount + successCount}`;
+
     return NextResponse.json({
       success: true,
-      message: `✅ TCP/IP Setup Complete!\n📊 Success: ${successCount} | Failed: ${failedCount}\n${devices.map(d => `✅ ${d.serial} → ${d.tcp_address}`).join('\n')}`,
+      message,
       output: output.trim(),
       details: {
         successCount,
         failedCount,
-        devices
+        alreadyTcpipCount,
+        devices,
+        tcpipDevices,
+        totalDevices: alreadyTcpipCount + successCount
       }
     });
   } catch (err) {

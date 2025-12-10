@@ -126,6 +126,33 @@ export default function Home() {
     }
   }
 
+  async function handleEnableTcpIp(serial) {
+    addLog(`Enabling TCP/IP for ${serial}...`);
+  
+    try {
+      const res = await fetch("/api/enable-tcpip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ serial }),
+      });
+      const data = await res.json();
+  
+      if (!res.ok) throw new Error(data.error);
+  
+      if (data.alreadyTcpip) {
+        addLog(`${serial} already in TCP/IP mode`);
+      } else {
+        addLog(`✅ TCP/IP enabled: ${serial} → ${data.tcpAddress}`);
+      }
+  
+      // refresh list
+      setTimeout(() => handleScanDevices(), 2000);
+  
+    } catch (err) {
+      addLog("Enable TCP/IP error: " + err.message);
+    }
+  }
+
   // ============================
   // Pairing
   // ============================
@@ -1083,18 +1110,33 @@ export default function Home() {
                       </div>
                     </div>
 
-                    <button
-                          onClick={() => handleDisconnect(d.serial)}
-                          style={{
-                            padding: "6px 14px",
-                            borderRadius: 999,
-                            background: "#ef4444",
-                            color: "white",
-                            fontWeight: 700,
-                          }}
-                        >
-                          Disconnect
-                        </button>
+                    <div style={{ display: "flex", gap: "10px" }}>
+                      <button
+                        onClick={() => handleEnableTcpIp(d.serial)}
+                        style={{
+                          padding: "6px 14px",
+                          borderRadius: 999,
+                          background: "#22c55e",
+                          color: "white",
+                          fontWeight: 700,
+                        }}
+                      >
+                        Enable TCP/IP
+                      </button>
+
+                      <button
+                        onClick={() => handleDisconnect(d.serial)}
+                        style={{
+                          padding: "6px 14px",
+                          borderRadius: 999,
+                          background: "#ef4444",
+                          color: "white",
+                          fontWeight: 700,
+                        }}
+                      >
+                        Disconnect
+                      </button>
+                    </div>
                   </div>
                 ))
               )}

@@ -1,4 +1,6 @@
 {
-  "/page": "app/page.js",
-  "/api/devices/route": "app/api/devices/route.js"
+  "/api/devices/route": "app/api/devices/route.js",
+  "/api/disconnect/[serial]/route": "app/api/disconnect/[serial]/route.js",
+  "/api/enable-tcpip/route": "app/api/enable-tcpip/route.js",
+  "/page": "app/page.js"
 }

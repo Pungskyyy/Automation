@@ -85,7 +85,7 @@ enable_tcpip_for_device() {
   local connect_result
   connect_result=$(adb connect "${ip}:${TCPIP_PORT}" 2>&1 || true)
   
-  if echo "$connect_result" | grep -qi "connected"; then
+  if echo "$connect_result" | grep -qi "connected\|already connected"; then
     LOG "[$serial] ✅ Connected to ${ip}:${TCPIP_PORT}"
     
     echo "${ip}:${TCPIP_PORT}" >> "$DEVICE_IPS_FILE"
@@ -132,32 +132,67 @@ while IFS= read -r line; do
 done < <(adb devices -l | tail -n +2 | sed '/^$/d')
 
 if [ ${#DEV_LINES[@]} -eq 0 ]; then
-  LOG "❌ No USB devices"
+  LOG "❌ No devices found"
   exit 0
 fi
 
-LOG "Found ${#DEV_LINES[@]} USB devices"
+LOG "Found ${#DEV_LINES[@]} connected devices"
 
 VALID_SERIALS=()
+TCPIP_DEVICES=()
+USB_DEVICES=()
+
 for line in "${DEV_LINES[@]}"; do
   serial=$(echo "$line" | awk '{print $1}')
   state=$(echo "$line" | awk '{print $2}')
   
-  if [ "$state" = "device" ]; then
-    VALID_SERIALS+=("$serial")
-    LOG "✅ $serial"
+  # Cek apakah device sudah dalam mode TCP/IP (format IP:PORT)
+  if [[ "$serial" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:[0-9]+$ ]]; then
+    if [ "$state" = "device" ]; then
+      TCPIP_DEVICES+=("$serial")
+      LOG "🌐 $serial (already in TCP/IP mode - SKIP)"
+      echo "${serial},${serial},already_tcpip" >> "${LOG_FILE}.csv"
+    else
+      ERROR "⚠️  $serial (TCP/IP but state: $state)"
+    fi
   else
-    ERROR "⚠️  $serial (state: $state)"
+    # Device USB
+    if [ "$state" = "device" ]; then
+      USB_DEVICES+=("$serial")
+      VALID_SERIALS+=("$serial")
+      LOG "🔌 $serial (USB - will convert to TCP/IP)"
+    else
+      ERROR "⚠️  $serial (USB but state: $state)"
+    fi
   fi
 done
 
-if [ ${#VALID_SERIALS[@]} -eq 0 ]; then
-  ERROR "❌ No authorized devices"
-  exit 1
+LOG ""
+LOG "📊 Summary:"
+LOG "  🌐 TCP/IP devices (already connected): ${#TCPIP_DEVICES[@]}"
+LOG "  🔌 USB devices (need conversion): ${#USB_DEVICES[@]}"
+LOG ""
+
+if [ ${#TCPIP_DEVICES[@]} -gt 0 ]; then
+  LOG "✅ TCP/IP devices that will be kept:"
+  for dev in "${TCPIP_DEVICES[@]}"; do
+    LOG "   • $dev"
+  done
+  LOG ""
 fi
 
-LOG ""
-LOG "🔄 Processing ${#VALID_SERIALS[@]} devices..."
+if [ ${#VALID_SERIALS[@]} -eq 0 ]; then
+  if [ ${#TCPIP_DEVICES[@]} -gt 0 ]; then
+    LOG "✅ All devices already in TCP/IP mode. Nothing to do!"
+    LOG "=========================================="
+    exit 0
+  else
+    ERROR "❌ No USB devices to convert"
+    exit 1
+  fi
+fi
+
+LOG "🔄 Processing ${#VALID_SERIALS[@]} USB devices..."
 LOG ""
 
 if command -v parallel &> /dev/null; then
@@ -176,25 +211,30 @@ LOG "=========================================="
 LOG "📊 SETUP COMPLETE!"
 LOG "=========================================="
 
-total=${#VALID_SERIALS[@]}
-success=$(grep -c ",success$" "${LOG_FILE}.csv" 2>/dev/null || echo 0)
-failed=$(( total - success ))
+usb_total=${#VALID_SERIALS[@]}
+usb_success=$(grep -c ",success$" "${LOG_FILE}.csv" 2>/dev/null || echo 0)
+usb_failed=$(( usb_total - usb_success ))
+tcpip_kept=${#TCPIP_DEVICES[@]}
+total_devices=$(( usb_total + tcpip_kept ))
 
-LOG "Total: $total"
-LOG "✅ Success: $success"
-LOG "❌ Failed: $failed"
+LOG "USB Devices Processed: $usb_total"
+LOG "✅ Successfully converted: $usb_success"
+LOG "❌ Failed: $usb_failed"
+LOG ""
+LOG "🌐 TCP/IP devices (already connected): $tcpip_kept"
+LOG "📱 Total devices available: $total_devices"
 
-if [ $total -gt 0 ]; then
-  LOG "📈 Success rate: $(( success * 100 / total ))%"
+if [ $usb_total -gt 0 ]; then
+  LOG "📈 Conversion success rate: $(( usb_success * 100 / usb_total ))%"
 fi
 
 LOG "=========================================="
 
-if [ $success -gt 0 ]; then
+if [ $usb_success -gt 0 ]; then
   LOG ""
   LOG "🎉 Next steps:"
-  LOG "1. �� Cabut USB cable"
-  LOG "2. 🔄 Run: bash scripts/auto_reconnect.sh"
+  LOG "1. 🔌 Cabut USB cable dari device yang baru dikonversi"
+  LOG "2. 🔄 Run: bash scripts/auto_reconnect.sh (jika perlu)"
   LOG "3. 🚀 Start automation!"
   LOG ""
   LOG "✅ Device ready for WiFi automation!"
