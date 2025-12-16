@@ -6,6 +6,7 @@ import PairingQR from "../components/PairingQR";
 
 export default function Home() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true); // Loading state untuk check auth
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
@@ -80,6 +81,107 @@ export default function Home() {
   function addLog(msg) {
     const t = new Date().toLocaleTimeString();
     setLogs((prev) => [`[${t}] ${msg}`, ...prev.slice(0, 200)]);
+  }
+
+  // State untuk Connect by IP
+  const [connectIp, setConnectIp] = useState("");
+  const [connectPort, setConnectPort] = useState("5555");
+  const [connectLoading, setConnectLoading] = useState(false);
+
+  // CHECK LOGIN STATUS ON MOUNT
+  useEffect(() => {
+    // Check if user is already logged in from localStorage
+    const savedUser = localStorage.getItem("loggedInUser");
+    const loginTimestamp = localStorage.getItem("loginTimestamp");
+    
+    if (savedUser && loginTimestamp) {
+      // Check if session is still valid (24 hours)
+      const now = new Date().getTime();
+      const loginTime = parseInt(loginTimestamp);
+      const hoursSinceLogin = (now - loginTime) / (1000 * 60 * 60);
+      
+      if (hoursSinceLogin < 24) {
+        // Session still valid
+        setIsLoggedIn(true);
+        setUsername(savedUser);
+        console.log("DEBUG: Auto-login successful for user -", savedUser);
+      } else {
+        // Session expired
+        localStorage.removeItem("loggedInUser");
+        localStorage.removeItem("loginTimestamp");
+        console.log("DEBUG: Session expired, please login again");
+      }
+    }
+    
+    // Set checking selesai
+    setIsCheckingAuth(false);
+  }, []);
+
+  // Function untuk connect by IP
+  async function handleConnectByIp() {
+    if (!connectIp) {
+      addLog("❌ Please enter IP address");
+      return;
+    }
+
+    setConnectLoading(true);
+    addLog(`🌐 Connecting to ${connectIp}:${connectPort}...`);
+
+    try {
+      const res = await fetch("/api/connect-ip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ip: connectIp, port: connectPort }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        // Berikan instruksi lebih detail jika gagal
+        if (data.error?.includes("Connection refused") || data.error?.includes("failed to connect")) {
+          addLog(`❌ Connection refused ke ${connectIp}:${connectPort}`);
+          addLog(`\n📋 Kemungkinan penyebab:`);
+          addLog(`   1️⃣ Device belum enable TCP/IP mode`);
+          addLog(`   2️⃣ Device tidak tersambung ke WiFi yang sama`);
+          addLog(`   3️⃣ IP address sudah berubah (DHCP)`);
+          addLog(`   4️⃣ Port ${connectPort} tidak terbuka di device`);
+          addLog(`   5️⃣ Device dalam mode sleep/screen off`);
+          addLog(`\n✅ Solusi cepat:`);
+          addLog(`   • Sambungkan device via USB dulu`);
+          addLog(`   • Pastikan muncul di "Connected Devices"`);
+          addLog(`   • Klik "Enable TCP/IP" pada device tersebut`);
+          addLog(`   • Catat IP address yang muncul (misal: 192.168.0.168:5555)`);
+          addLog(`   • Sekarang cabut USB dan coba connect lagi`);
+          addLog(`\n🔧 Debug command (jalankan di terminal):`);
+          addLog(`   adb kill-server && adb start-server`);
+          addLog(`   adb connect ${connectIp}:${connectPort}`);
+        } else if (data.error?.includes("already connected")) {
+          addLog(`✅ Device sudah terhubung: ${connectIp}:${connectPort}`);
+          // Refresh device list
+          setTimeout(() => handleScanDevices(), 1000);
+          return;
+        } else {
+          addLog(`❌ Error: ${data.error}`);
+        }
+        throw new Error(data.error || "Connection failed");
+      }
+
+      addLog(`✅ ${data.message}`);
+      if (data.deviceInfo) {
+        addLog(`📱 Device: ${data.deviceInfo.manufacturer} ${data.deviceInfo.model}`);
+        addLog(`🤖 Android: ${data.deviceInfo.androidVersion}`);
+      }
+
+      // Refresh device list
+      setTimeout(() => handleScanDevices(), 1000);
+
+      // Clear input
+      setConnectIp("");
+    } catch (err) {
+      // Error sudah di-log di atas dengan detail
+    } finally {
+      setConnectLoading(false);
+    }
   }
 
   // ============================
@@ -277,19 +379,19 @@ export default function Home() {
   // TikTok Video Comment
   // ============================
   async function sendTikTokVideoComment() {
-    console.log("[DEBUG] sendTikTokVideoComment called");
-    
     if (!tiktokVideoUrl || !tiktokVideoComment) {
       addLog("TikTok Video: URL atau komentar kosong");
       return;
     }
 
-    const targetSerial = selectedDevices.length > 0 
-      ? selectedDevices[0] 
-      : (devices.length > 0 ? devices[0].serial : null);
+    const targetSerial = selectedDevices.length > 0
+      ? selectedDevices[0]
+      : devices.length > 0
+      ? devices[0].serial
+      : null;
 
     if (!targetSerial) {
-      addLog("TikTok Video: Tidak ada device tersedia. Scan device terlebih dahulu.");
+      addLog("TikTok Video: Tidak ada device tersedia");
       return;
     }
 
@@ -302,20 +404,84 @@ export default function Home() {
         body: JSON.stringify({
           videoUrl: tiktokVideoUrl,
           comment: tiktokVideoComment,
-          coords: tiktokCoords,
           serial: targetSerial,
+          useResourceId: true,
         }),
       });
 
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Failed to send comment");
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to send comment");
+      }
 
       addLog(`✅ Komentar TikTok Video terkirim ke ${targetSerial}`);
+      setTimeout(() => handleScanDevices(), 1000);
     } catch (err) {
-      console.error("[DEBUG] Error:", err);
+      console.error("[DEBUG] TikTok Video Error:", err);
       addLog("❌ Error TikTok Video: " + err.message);
     } finally {
       setTiktokVideoLoading(false);
+    }
+  }
+
+  async function massSendTikTokVideo() {
+    if (!tiktokVideoUrl || !tiktokVideoComment) {
+      addLog("TikTok Video: URL atau komentar kosong");
+      return;
+    }
+
+    if (selectedDevices.length === 0) {
+      addLog("❌ Tidak ada device yang dipilih untuk Mass Comment");
+      return;
+    }
+
+    setMassRunning(true);
+    setMassProgress(0);
+    addLog(`🚀 Mass Comment TikTok Video dimulai untuk ${selectedDevices.length} devices...`);
+
+    try {
+      const response = await fetch("/api/tiktok-comment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          videoUrl: tiktokVideoUrl,
+          comment: tiktokVideoComment,
+          serials: selectedDevices,
+          useResourceId: true,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to send mass comments");
+      }
+
+      addLog(`\n📊 Mass Comment Results:`);
+      addLog(`✅ Success: ${data.successCount}`);
+      addLog(`❌ Failed: ${data.failCount}`);
+      addLog(`\nDetail:`);
+      
+      data.results.forEach((result) => {
+        if (result.success) {
+          addLog(`✅ ${result.serial}: ${result.message}`);
+        } else {
+          addLog(`❌ ${result.serial}: ${result.error}`);
+        }
+      });
+
+      setMassProgress(100);
+      setTimeout(() => {
+        handleScanDevices();
+        setMassProgress(0);
+      }, 2000);
+    } catch (err) {
+      addLog(`❌ Mass Comment Error: ${err.message}`);
+    } finally {
+      setTimeout(() => {
+        setMassRunning(false);
+      }, 2000);
     }
   }
 
@@ -323,127 +489,107 @@ export default function Home() {
   // TikTok Post Comment
   // ============================
   async function sendTikTokPostComment() {
-    console.log("[DEBUG] sendTikTokPostComment called");
-    
     if (!tiktokPostUrl || !tiktokPostComment) {
       addLog("TikTok Post: URL atau komentar kosong");
       return;
     }
 
-    const targetSerial = selectedDevices.length > 0 
-      ? selectedDevices[0] 
-      : (devices.length > 0 ? devices[0].serial : null);
+    const targetSerial = selectedDevices.length > 0
+      ? selectedDevices[0]
+      : devices.length > 0
+      ? devices[0].serial
+      : null;
 
     if (!targetSerial) {
-      addLog("TikTok Post: Tidak ada device tersedia. Scan device terlebih dahulu.");
+      addLog("TikTok Post: Tidak ada device tersedia");
       return;
     }
 
     setTiktokPostLoading(true);
 
     try {
-      const response = await fetch("/api/tiktok-comment", {
+      const response = await fetch("/api/tiktok-post-comment", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          videoUrl: tiktokPostUrl,
+          postUrl: tiktokPostUrl,
           comment: tiktokPostComment,
-          coords: tiktokCoords,
           serial: targetSerial,
         }),
       });
 
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Failed to send comment");
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to send comment");
+      }
 
       addLog(`✅ Komentar TikTok Post terkirim ke ${targetSerial}`);
+      setTimeout(() => handleScanDevices(), 1000);
     } catch (err) {
-      console.error("[DEBUG] Error:", err);
+      console.error("[DEBUG] TikTok Post Error:", err);
       addLog("❌ Error TikTok Post: " + err.message);
     } finally {
       setTiktokPostLoading(false);
     }
   }
 
-  // ============================
-  // Instagram Post Comment
-  // ============================
-  async function sendInstagramPostComment() {
-    if (!igPostUrl || !igPostComment) {
-      addLog("Instagram Post: URL atau komentar kosong");
+  async function massSendTikTokPost() {
+    if (!tiktokPostUrl || !tiktokPostComment) {
+      addLog("TikTok Post: URL atau komentar kosong");
       return;
     }
 
-    const targetSerial = selectedDevices.length > 0 
-      ? selectedDevices[0] 
-      : (devices.length > 0 ? devices[0].serial : null);
-
-    if (!targetSerial) {
-      addLog("Instagram Post: Tidak ada device tersedia. Scan device terlebih dahulu.");
+    if (selectedDevices.length === 0) {
+      addLog("❌ Tidak ada device yang dipilih untuk Mass Comment");
       return;
     }
 
-    setIgPostLoading(true);
+    setMassRunning(true);
+    setMassProgress(0);
+    addLog(`🚀 Mass Comment TikTok Post dimulai untuk ${selectedDevices.length} devices...`);
 
     try {
-      await fetch("/api/ig-comment", {
+      const response = await fetch("/api/tiktok-post-comment", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          postUrl: igPostUrl,
-          comment: igPostComment,
-          coords: igCoords,
-          serial: targetSerial,
-          type: "post",
+          postUrl: tiktokPostUrl,
+          comment: tiktokPostComment,
+          serials: selectedDevices,
         }),
       });
 
-      addLog(`✅ Komentar Instagram Post terkirim ke ${targetSerial}`);
-    } catch (err) {
-      addLog("❌ Error Instagram Post: " + err.message);
-    } finally {
-      setIgPostLoading(false);
-    }
-  }
+      const data = await response.json();
 
-  // ============================
-  // Instagram Reels Comment
-  // ============================
-  async function sendInstagramReelsComment() {
-    if (!igReelsUrl || !igReelsComment) {
-      addLog("Instagram Reels: URL atau komentar kosong");
-      return;
-    }
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to send mass comments");
+      }
 
-    const targetSerial = selectedDevices.length > 0 
-      ? selectedDevices[0] 
-      : (devices.length > 0 ? devices[0].serial : null);
-
-    if (!targetSerial) {
-      addLog("Instagram Reels: Tidak ada device tersedia. Scan device terlebih dahulu.");
-      return;
-    }
-
-    setIgReelsLoading(true);
-
-    try {
-      await fetch("/api/ig-comment", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          postUrl: igReelsUrl,
-          comment: igReelsComment,
-          coords: igCoords,
-          serial: targetSerial,
-          type: "reels",
-        }),
+      addLog(`\n📊 Mass Comment Results:`);
+      addLog(`✅ Success: ${data.successCount}`);
+      addLog(`❌ Failed: ${data.failCount}`);
+      addLog(`\nDetail:`);
+      
+      data.results.forEach((result) => {
+        if (result.success) {
+          addLog(`✅ ${result.serial}: ${result.message}`);
+        } else {
+          addLog(`❌ ${result.serial}: ${result.error}`);
+        }
       });
 
-      addLog(`✅ Komentar Instagram Reels terkirim ke ${targetSerial}`);
+      setMassProgress(100);
+      setTimeout(() => {
+        handleScanDevices();
+        setMassProgress(0);
+      }, 2000);
     } catch (err) {
-      addLog("❌ Error Instagram Reels: " + err.message);
+      addLog(`❌ Mass Comment Error: ${err.message}`);
     } finally {
-      setIgReelsLoading(false);
+      setTimeout(() => {
+        setMassRunning(false);
+      }, 2000);
     }
   }
 
@@ -782,6 +928,10 @@ export default function Home() {
       console.log("DEBUG: Login berhasil untuk user -", user.username);
       setIsLoggedIn(true);
       setLoginError("");
+      
+      // Save login state to localStorage
+      localStorage.setItem("loggedInUser", user.username);
+      localStorage.setItem("loginTimestamp", new Date().getTime().toString());
     } else {
       console.log("DEBUG: Login gagal. Username atau password salah.");
       setLoginError("Username atau password salah");
@@ -793,8 +943,34 @@ export default function Home() {
     setUsername("");
     setPassword("");
     setLoginError("");
+    
+    // Clear localStorage
+    localStorage.removeItem("loggedInUser");
+    localStorage.removeItem("loginTimestamp");
+    
     console.log("DEBUG: User logged out");
   };
+
+  // Loading state saat checking authentication
+  if (isCheckingAuth) {
+    return (
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          height: "100vh",
+          background: "#0f172a",
+          color: "#f9fafb",
+        }}
+      >
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: "24px", marginBottom: "16px" }}>🔐</div>
+          <div>Loading...</div>
+        </div>
+      </div>
+    );
+  }
 
   if (!isLoggedIn) {
     return (
@@ -1071,75 +1247,167 @@ export default function Home() {
                 padding: 10,
               }}
             >
-              {devices.length === 0 ? (
-                <p style={{ opacity: 0.6 }}>Belum ada device.</p>
-              ) : (
-                devices.map((d) => (
+              {devices.map((dev) => {
+                const isSelected = selectedDevices.includes(dev.serial);
+                const isUsb = !dev.serial.includes(":");
+                const isTcpIp = dev.serial.includes(":");
+
+                return (
                   <div
-                    key={d.serial}
+                    key={dev.serial}
                     style={{
-                      padding: "10px 0",
-                      borderBottom: "1px solid #111827",
+                      padding: "12px 14px",
+                      borderRadius: "10px",
+                      background: isSelected ? "#1e293b" : "#0f172a",
+                      border: isSelected
+                        ? "2px solid #00fca8"
+                        : "1px solid #1e293b",
                       display: "flex",
-                      justifyContent: "space-between",
                       alignItems: "center",
+                      gap: "10px",
+                      cursor: "pointer",
+                      transition: "all 0.2s",
+                    }}
+                    onClick={() => {
+                      if (isSelected) {
+                        setSelectedDevices(
+                          selectedDevices.filter((s) => s !== dev.serial)
+                        );
+                      } else {
+                        setSelectedDevices([...selectedDevices, dev.serial]);
+                      }
                     }}
                   >
-                    {/* Checkbox + Info */}
-                    <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-                      <input
-                        type="checkbox"
-                        checked={selectedDevices.includes(d.serial)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setSelectedDevices((p) => [...p, d.serial]);
-                          } else {
-                            setSelectedDevices((p) =>
-                              p.filter((x) => x !== d.serial)
-                            );
-                          }
-                        }}
-                      />
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => {}}
+                      style={{ width: "16px", height: "16px" }}
+                    />
 
-                      <div>
-                        <div style={{ fontWeight: 600 }}>{d.serial}</div>
-                        <div>
-                          Status:
-                          <span style={{ color: "#22c55e" }}> {d.status}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div style={{ display: "flex", gap: "10px" }}>
-                      <button
-                        onClick={() => handleEnableTcpIp(d.serial)}
+                    <div style={{ flex: 1 }}>
+                      <div
                         style={{
-                          padding: "6px 14px",
-                          borderRadius: 999,
-                          background: "#22c55e",
-                          color: "white",
-                          fontWeight: 700,
+                          fontSize: "13px",
+                          fontWeight: 600,
+                          fontFamily: "monospace",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
                         }}
                       >
-                        Enable TCP/IP
-                      </button>
+                        {isTcpIp ? "🌐" : "🔌"} {dev.serial}
+                        {dev.state === "device" && (
+                          <span style={{ color: "#22c55e", fontSize: "10px" }}>
+                            ● Online
+                          </span>
+                        )}
+                        {dev.state !== "device" && (
+                          <span style={{ color: "#ef4444", fontSize: "10px" }}>
+                            ● {dev.state}
+                          </span>
+                        )}
+                      </div>
+                      {dev.model && (
+                        <div style={{ fontSize: "11px", opacity: 0.7 }}>
+                          📱 {dev.model}
+                        </div>
+                      )}
+                    </div>
+
+                    <div style={{ display: "flex", gap: "6px" }}>
+                      {isUsb && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEnableTcpIp(dev.serial);
+                          }}
+                          style={{
+                            padding: "6px 12px",
+                            borderRadius: "8px",
+                            background: "#22c55e",
+                            color: "#022c22",
+                            fontSize: "11px",
+                            fontWeight: 600,
+                            border: "none",
+                            cursor: "pointer",
+                          }}
+                        >
+                          Enable TCP/IP
+                        </button>
+                      )}
 
                       <button
-                        onClick={() => handleDisconnect(d.serial)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDisconnect(dev.serial);
+                        }}
                         style={{
-                          padding: "6px 14px",
-                          borderRadius: 999,
+                          padding: "6px 12px",
+                          borderRadius: "8px",
                           background: "#ef4444",
                           color: "white",
-                          fontWeight: 700,
+                          fontSize: "11px",
+                          fontWeight: 600,
+                          border: "none",
+                          cursor: "pointer",
                         }}
                       >
                         Disconnect
                       </button>
                     </div>
                   </div>
-                ))
-              )}
+                );
+              })}
+            </div>
+
+            {/* Connect by IP */}
+            <div style={{ marginTop: 20 }}>
+              <h4>Connect by IP</h4>
+              <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
+                <input
+                  type="text"
+                  placeholder="IP Address"
+                  value={connectIp}
+                  onChange={(e) => setConnectIp(e.target.value)}
+                  style={{
+                    padding: "8px",
+                    borderRadius: "8px",
+                    border: "1px solid #374151",
+                    background: "#0f172a",
+                    color: "#f9fafb",
+                    flex: 1,
+                  }}
+                />
+                <input
+                  type="text"
+                  placeholder="Port"
+                  value={connectPort}
+                  onChange={(e) => setConnectPort(e.target.value)}
+                  style={{
+                    padding: "8px",
+                    borderRadius: "8px",
+                    border: "1px solid #374151",
+                    background: "#0f172a",
+                    color: "#f9fafb",
+                    width: "80px",
+                  }}
+                />
+                <button
+                  onClick={handleConnectByIp}
+                  disabled={connectLoading}
+                  style={{
+                    padding: "8px 16px",
+                    borderRadius: "8px",
+                    background: "#22c55e",
+                    color: "#022c22",
+                    fontWeight: "bold",
+                    border: "none",
+                  }}
+                >
+                  {connectLoading ? "Connecting..." : "Connect"}
+                </button>
+              </div>
             </div>
           </section>
         )}
@@ -1699,40 +1967,29 @@ export default function Home() {
               />
             </label>
 
-            <button
-              onClick={sendTikTokVideoComment}
-              disabled={tiktokVideoLoading}
-              style={{
-                marginTop: 14,
-                padding: "10px 20px",
-                background: tiktokVideoLoading ? "#4b5563" : "#00fca8",
-                borderRadius: 999,
-                fontWeight: 700,
-                color: "#00150a",
-                width: "100%",
-                cursor: tiktokVideoLoading ? "not-allowed" : "pointer",
-                opacity: tiktokVideoLoading ? 0.7 : 1,
-                transition: "all 0.3s ease",
-                transform: tiktokVideoLoading ? "scale(0.98)" : "scale(1)",
-              }}
-            >
-              {tiktokVideoLoading ? "⏳ Mengirim..." : "✅ Kirim Komentar TikTok Video"}
-            </button>
-
+            {/* HANYA BUTTON MASS COMMENT TIKTOK VIDEO */}
             <button
               onClick={massSendTikTokVideo}
-              disabled={massRunning}
+              disabled={massRunning || selectedDevices.length === 0}
               style={{
                 marginTop: 14,
-                padding: "10px 20px",
+                padding: "12px 20px",
                 width: "100%",
-                background: "#1d4ed8",
+                background: massRunning || selectedDevices.length === 0 ? "#4b5563" : "#10b981",
                 borderRadius: 999,
                 fontWeight: 700,
                 color: "white",
+                cursor: massRunning || selectedDevices.length === 0 ? "not-allowed" : "pointer",
+                opacity: massRunning || selectedDevices.length === 0 ? 0.7 : 1,
+                transition: "all 0.3s ease",
               }}
             >
-              {massRunning ? "Mengirim ke semua device..." : "Mass Comment TikTok Video"}
+              {massRunning 
+                ? "⏳ Mengirim ke semua device..." 
+                : selectedDevices.length === 0
+                ? "❌ Pilih device terlebih dahulu"
+                : `🚀 Mass Comment TikTok Video (${selectedDevices.length} devices)`
+              }
             </button>
 
             {massRunning && (
@@ -1756,6 +2013,17 @@ export default function Home() {
                 />
               </div>
             )}
+
+            {selectedDevices.length === 0 && (
+              <p style={{ 
+                marginTop: 10, 
+                fontSize: "12px", 
+                color: "#f59e0b",
+                textAlign: "center" 
+              }}>
+                ⚠️ Silakan pilih minimal 1 device dari daftar di atas
+              </p>
+            )}
           </section>
         )}
 
@@ -1772,7 +2040,7 @@ export default function Home() {
             <h3>📱 Auto Comment TikTok Post</h3>
 
             <label style={{ marginTop: 12, display: "block" }}>
-              Link TikTok Post
+              Link Post TikTok
               <input
                 value={tiktokPostUrl}
                 onChange={(e) => setTiktokPostUrl(e.target.value)}
@@ -1807,39 +2075,29 @@ export default function Home() {
               />
             </label>
 
-            <button
-              onClick={sendTikTokPostComment}
-              disabled={tiktokPostLoading}
-              style={{
-                marginTop: 14,
-                padding: "10px 20px",
-                background: tiktokPostLoading ? "#4b5563" : "#00fca8",
-                borderRadius: 999,
-                fontWeight: 700,
-                color: "#00150a",
-                width: "100%",
-                cursor: tiktokPostLoading ? "not-allowed" : "pointer",
-                opacity: tiktokPostLoading ? 0.7 : 1,
-                transition: "all 0.3s ease",
-              }}
-            >
-              {tiktokPostLoading ? "⏳ Mengirim..." : "✅ Kirim Komentar TikTok Post"}
-            </button>
-
+            {/* HANYA BUTTON MASS COMMENT TIKTOK POST */}
             <button
               onClick={massSendTikTokPost}
-              disabled={massRunning}
+              disabled={massRunning || selectedDevices.length === 0}
               style={{
                 marginTop: 14,
-                padding: "10px 20px",
+                padding: "12px 20px",
                 width: "100%",
-                background: "#1d4ed8",
+                background: massRunning || selectedDevices.length === 0 ? "#4b5563" : "#1d4ed8",
                 borderRadius: 999,
                 fontWeight: 700,
                 color: "white",
+                cursor: massRunning || selectedDevices.length === 0 ? "not-allowed" : "pointer",
+                opacity: massRunning || selectedDevices.length === 0 ? 0.7 : 1,
+                transition: "all 0.3s ease",
               }}
             >
-              {massRunning ? "Mengirim ke semua device..." : "Mass Comment TikTok Post"}
+              {massRunning 
+                ? "⏳ Mengirim ke semua device..." 
+                : selectedDevices.length === 0
+                ? "❌ Pilih device terlebih dahulu"
+                : `🚀 Mass Comment TikTok Post (${selectedDevices.length} devices)`
+              }
             </button>
 
             {massRunning && (
@@ -1863,6 +2121,156 @@ export default function Home() {
                 />
               </div>
             )}
+
+            {selectedDevices.length === 0 && (
+              <p style={{ 
+                marginTop: 10, 
+                fontSize: "12px", 
+                color: "#f59e0b",
+                textAlign: "center" 
+              }}>
+                ⚠️ Silakan pilih minimal 1 device dari daftar di atas
+              </p>
+            )}
+          </section>
+        )}
+
+        {/* ======================= CONNECT BY IP */}
+        {activeSection === "connect-ip" && (
+          <section
+            style={{
+              background: cardBg,
+              padding: 18,
+              borderRadius: 16,
+              border: `1px solid ${cardBorder}`,
+            }}
+          >
+            <h3>🌐 Connect Device by IP Address</h3>
+            <p style={{ fontSize: "14px", opacity: 0.7, marginTop: "8px" }}>
+              Connect to devices wirelessly. Make sure devices are on the same WiFi network.
+            </p>
+
+            {/* Warning Box */}
+            <div
+              style={{
+                marginTop: 16,
+                padding: 12,
+                background: "#1e293b",
+                borderRadius: 10,
+                border: "2px solid #f59e0b",
+              }}
+            >
+              <h4 style={{ fontSize: "14px", fontWeight: 600, marginBottom: 8, color: "#f59e0b" }}>
+                ⚠️ PENTING: Setup Awal (Hanya Sekali)
+              </h4>
+              <ol style={{ fontSize: "13px", opacity: 0.9, paddingLeft: 20, margin: 0 }}>
+                <li>Sambungkan device via <strong>USB kabel</strong></li>
+                <li>Pastikan device muncul di <strong>"Connected Devices"</strong></li>
+                <li>Klik tombol <strong>"Enable TCP/IP"</strong> pada device</li>
+                <li>Catat IP address yang muncul (contoh: 192.168.0.168)</li>
+                <li>Sekarang cabut USB, device siap connect wireless</li>
+              </ol>
+            </div>
+
+            <label style={{ marginTop: 16, display: "block" }}>
+              IP Address
+              <input
+                type="text"
+                value={connectIp}
+                onChange={(e) => setConnectIp(e.target.value)}
+                placeholder="192.168.0.168"
+                style={{
+                  width: "100%",
+                  padding: 10,
+                  background: shellBg,
+                  borderRadius: 10,
+                  border: "1px solid #374151",
+                  color: "white",
+                  marginTop: 5,
+                }}
+              />
+            </label>
+
+            <label style={{ marginTop: 12, display: "block" }}>
+              Port (default: 5555)
+              <input
+                type="text"
+                value={connectPort}
+                onChange={(e) => setConnectPort(e.target.value)}
+                placeholder="5555"
+                style={{
+                  width: "100%",
+                  padding: 10,
+                  background: shellBg,
+                  borderRadius: 10,
+                  border: "1px solid #374151",
+                  color: "white",
+                  marginTop: 5,
+                }}
+              />
+            </label>
+
+            <button
+              onClick={handleConnectByIp}
+              disabled={connectLoading}
+              style={{
+                marginTop: 16,
+                padding: "12px 24px",
+                background: connectLoading ? "#4b5563" : "#00fca8",
+                borderRadius: 999,
+                fontWeight: 700,
+                color: "#00150a",
+                width: "100%",
+                cursor: connectLoading ? "not-allowed" : "pointer",
+                opacity: connectLoading ? 0.7 : 1,
+                transition: "all 0.3s ease",
+              }}
+            >
+              {connectLoading ? "⏳ Connecting..." : "🌐 Connect"}
+            </button>
+
+            {/* Troubleshooting Guide */}
+            <div
+              style={{
+                marginTop: 20,
+                padding: 16,
+                background: "#1e293b",
+                borderRadius: 10,
+                border: "1px solid #374151",
+              }}
+            >
+              <h4 style={{ fontSize: "14px", fontWeight: 600, marginBottom: 10, color: "#ef4444" }}>
+                🚨 Jika "Connection Refused":
+              </h4>
+              <ul style={{ fontSize: "13px", opacity: 0.8, paddingLeft: 20, margin: 0 }}>
+                <li>✅ Pastikan device sudah <strong>Enable TCP/IP</strong></li>
+                <li>✅ Device dan PC harus di <strong>WiFi yang sama</strong></li>
+                <li>✅ Cek IP address masih sama (bisa berubah)</li>
+                <li>✅ Restart device jika perlu</li>
+                <li>✅ Di terminal: <code style={{ background: "#0f172a", padding: "2px 6px", borderRadius: 4 }}>adb kill-server && adb start-server</code></li>
+              </ul>
+            </div>
+
+            <div
+              style={{
+                marginTop: 16,
+                padding: 16,
+                background: "#1e293b",
+                borderRadius: 10,
+                border: "1px solid #374151",
+              }}
+            >
+              <h4 style={{ fontSize: "14px", fontWeight: 600, marginBottom: 10, color: "#22c55e" }}>
+                💡 Tips untuk Koneksi Stabil:
+              </h4>
+              <ul style={{ fontSize: "13px", opacity: 0.8, paddingLeft: 20, margin: 0 }}>
+                <li>📌 Set <strong>static IP</strong> di router untuk setiap device</li>
+                <li>🔌 Pastikan device tetap charging (tidak sleep)</li>
+                <li>📶 Gunakan WiFi 5GHz jika tersedia (lebih stabil)</li>
+                <li>🔄 Re-enable TCP/IP jika device restart</li>
+                <li>📝 Simpan list IP address setiap device</li>
+              </ul>
+            </div>
           </section>
         )}
 

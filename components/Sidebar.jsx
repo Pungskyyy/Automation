@@ -2,11 +2,11 @@
 import { useState } from "react";
 
 export default function Sidebar({ active, onChange }) {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [openMenu, setOpenMenu] = useState(null);
 
   const menu = [
     { id: "devices", label: "Scan Devices", icon: "🖥️" },
+    { id: "connect-ip", label: "Connect by IP", icon: "🌐" },
     {
       id: "instagram",
       label: "Instagram",
@@ -26,15 +26,6 @@ export default function Sidebar({ active, onChange }) {
       ],
     },
   ];
-
-  console.log("[Sidebar] isLoggedIn:", isLoggedIn);
-  console.log("[Sidebar] Active Menu:", active);
-  console.log("[Sidebar] Menu Items:", menu);
-
-  const handleLogin = () => {
-    setIsLoggedIn(true);
-    onChange("devices");
-  };
 
   const handleMenuClick = (id) => {
     onChange(id);
@@ -61,7 +52,9 @@ export default function Sidebar({ active, onChange }) {
     >
       {/* Logo */}
       <div style={{ marginBottom: "10px", textAlign: "center" }}>
-        <div style={{ fontSize: "22px", fontWeight: 700, color: "#f8fafc" }}>OPA AUTOMATION</div>
+        <div style={{ fontSize: "22px", fontWeight: 700, color: "#f8fafc" }}>
+          OPA AUTOMATION
+        </div>
         <div style={{ opacity: 0.6, fontSize: "12px", color: "#cbd5e1" }}>
           Multi-Device Automation
         </div>
@@ -89,8 +82,7 @@ export default function Sidebar({ active, onChange }) {
                 fontSize: "16px",
                 fontWeight: 500,
                 color: active === m.id ? "#1e293b" : "#e2e8f0",
-                backgroundColor:
-                  active === m.id ? "#38bdf8" : "transparent",
+                backgroundColor: active === m.id ? "#38bdf8" : "transparent",
                 boxShadow:
                   active === m.id
                     ? "0 4px 8px rgba(56, 189, 248, 0.3)"
@@ -113,8 +105,18 @@ export default function Sidebar({ active, onChange }) {
             >
               <span style={{ fontSize: "18px" }}>{m.icon}</span> {m.label}
             </div>
+            
+            {/* Submenus */}
             {openMenu === m.id && m.submenus && (
-              <div style={{ marginLeft: "20px", marginTop: "10px", display: "flex", flexDirection: "column", gap: "8px" }}>
+              <div
+                style={{
+                  marginLeft: "20px",
+                  marginTop: "10px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "8px",
+                }}
+              >
                 {m.submenus.map((submenu) => (
                   <div
                     key={submenu.id}
@@ -126,7 +128,8 @@ export default function Sidebar({ active, onChange }) {
                       fontSize: "15px",
                       fontWeight: 400,
                       color: active === submenu.id ? "#38bdf8" : "#e2e8f0",
-                      backgroundColor: active === submenu.id ? "#334155" : "transparent",
+                      backgroundColor:
+                        active === submenu.id ? "#334155" : "transparent",
                       transition: "all 0.3s ease",
                       transform: "scale(1)",
                     }}
@@ -155,7 +158,15 @@ export default function Sidebar({ active, onChange }) {
       </nav>
 
       {/* Footer */}
-      <div style={{ marginTop: "auto", opacity: 0.6, fontSize: "11px", color: "#cbd5e1", textAlign: "center" }}>
+      <div
+        style={{
+          marginTop: "auto",
+          opacity: 0.6,
+          fontSize: "11px",
+          color: "#cbd5e1",
+          textAlign: "center",
+        }}
+      >
         © 2025 ADB Neon Console
       </div>
     </aside>
