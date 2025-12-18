@@ -3,169 +3,176 @@ import { exec } from "child_process";
 import util from "util";
 
 const execAsync = util.promisify(exec);
-
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Delays untuk smooth operation
-const DELAYS = {
-  afterOpenLink: 3000,
-  afterCommentIconClick: 2000,
-  beforeTyping: 1000,
-  afterTyping: 1500,
-  afterPostClick: 2000,
-  beforeClose: 1000,
-  afterClose: 1000,
-};
-
-// Resource IDs untuk TikTok
-const TIKTOK_IDS = {
-  commentIcon: "com.zhiliaoapp.musically:id/a9j",
-  commentInput: "com.zhiliaoapp.musically:id/eek",
-  postButton: "com.zhiliaoapp.musically:id/eel",
-};
-
-// Function untuk TikTok Video Comment dengan Resource ID
-async function tiktokCommentById(serial, comment, videoUrl) {
-  console.log(`[${serial}] Starting TikTok comment (Resource ID method)`);
-
-  // Open TikTok link
-  console.log(`[${serial}] Opening TikTok link: ${videoUrl}`);
+// Helper: Get bounds dari resource-id
+async function getBoundsFromResourceId(serial, resourceId) {
   try {
-    await execAsync(`adb -s ${serial} shell am start -a android.intent.action.VIEW -d "${videoUrl}"`);
-  } catch (err) {
-    console.error(`[${serial}] Error opening link:`, err.message);
-    throw new Error(`Failed to open TikTok link: ${err.message}`);
-  }
-
-  console.log(`[${serial}] Waiting ${DELAYS.afterOpenLink}ms for video to load...`);
-  await sleep(DELAYS.afterOpenLink);
-
-  // Click comment icon
-  console.log(`[${serial}] Clicking comment icon...`);
-  try {
-    await execAsync(`adb -s ${serial} shell input tap $(adb -s ${serial} shell uiautomator dump /dev/tty | grep -oP 'resource-id="${TIKTOK_IDS.commentIcon}"[^>]*bounds="\\[\\d+,\\d+\\]\\[\\d+,\\d+\\]"' | grep -oP '\\d+,\\d+' | head -1 | awk -F',' '{print ($1+$3)/2, ($2+$4)/2}')`);
-  } catch (err) {
-    // Fallback: Try direct resource-id click
-    try {
-      await execAsync(`adb -s ${serial} shell input tap 900 1800`);
-    } catch (e) {
-      console.error(`[${serial}] Failed to click comment icon`);
+    await execAsync(`adb -s ${serial} shell uiautomator dump /sdcard/window_dump.xml`);
+    const { stdout } = await execAsync(`adb -s ${serial} shell cat /sdcard/window_dump.xml`);
+    
+    const pattern = new RegExp(`resource-id="${resourceId}"[^>]*bounds="\\[(\\d+),(\\d+)\\]\\[(\\d+),(\\d+)\\]"`);
+    const match = stdout.match(pattern);
+    
+    if (match) {
+      const x1 = parseInt(match[1]);
+      const y1 = parseInt(match[2]);
+      const x2 = parseInt(match[3]);
+      const y2 = parseInt(match[4]);
+      const centerX = Math.floor((x1 + x2) / 2);
+      const centerY = Math.floor((y1 + y2) / 2);
+      
+      console.log(`[${serial}] Found ${resourceId}: (${centerX}, ${centerY})`);
+      return { x: centerX, y: centerY, found: true };
     }
-  }
-
-  console.log(`[${serial}] Waiting ${DELAYS.afterCommentIconClick}ms...`);
-  await sleep(DELAYS.afterCommentIconClick);
-
-  // Click comment input field
-  console.log(`[${serial}] Clicking comment input field...`);
-  try {
-    await execAsync(`adb -s ${serial} shell input tap $(adb -s ${serial} shell uiautomator dump /dev/tty | grep -oP 'resource-id="${TIKTOK_IDS.commentInput}"[^>]*bounds="\\[\\d+,\\d+\\]\\[\\d+,\\d+\\]"' | grep -oP '\\d+,\\d+' | head -1 | awk -F',' '{print ($1+$3)/2, ($2+$4)/2}')`);
+    
+    return { x: 0, y: 0, found: false };
   } catch (err) {
-    // Fallback
-    await execAsync(`adb -s ${serial} shell input tap 540 2100`);
+    console.error(`[${serial}] Error getting bounds:`, err.message);
+    return { x: 0, y: 0, found: false };
   }
-
-  console.log(`[${serial}] Waiting ${DELAYS.beforeTyping}ms...`);
-  await sleep(DELAYS.beforeTyping);
-
-  // Type comment
-  console.log(`[${serial}] Typing comment...`);
-  const escapedComment = comment.replace(/ /g, "%s").replace(/'/g, "\\'").replace(/"/g, '\\"');
-  await execAsync(`adb -s ${serial} shell input text "${escapedComment}"`);
-
-  console.log(`[${serial}] Waiting ${DELAYS.afterTyping}ms...`);
-  await sleep(DELAYS.afterTyping);
-
-  // Click Post button
-  console.log(`[${serial}] Clicking Post button...`);
-  try {
-    await execAsync(`adb -s ${serial} shell input tap $(adb -s ${serial} shell uiautomator dump /dev/tty | grep -oP 'resource-id="${TIKTOK_IDS.postButton}"[^>]*bounds="\\[\\d+,\\d+\\]\\[\\d+,\\d+\\]"' | grep -oP '\\d+,\\d+' | head -1 | awk -F',' '{print ($1+$3)/2, ($2+$4)/2}')`);
-  } catch (err) {
-    // Fallback
-    await execAsync(`adb -s ${serial} shell input tap 950 2100`);
-  }
-
-  console.log(`[${serial}] Waiting ${DELAYS.afterPostClick}ms...`);
-  await sleep(DELAYS.afterPostClick);
-
-  // Close comment section
-  console.log(`[${serial}] Closing comment section...`);
-  await sleep(DELAYS.beforeClose);
-  await execAsync(`adb -s ${serial} shell input keyevent 4`);
-  await sleep(DELAYS.afterClose);
-
-  console.log(`[${serial}] ✅ Comment sent successfully`);
 }
 
-// Function untuk send comment
-async function sendTikTokCommentWithDelay(serial, videoUrl, comment, useResourceId = true) {
-  await tiktokCommentById(serial, comment, videoUrl);
-  return { message: `Comment sent to ${serial}` };
+// TikTok Video Comment dengan AUTO-DETECT
+async function tiktokVideoComment(serial, comment, videoUrl, customCoords) {
+  console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+  console.log(`[${serial}] 🎵 TikTok VIDEO Comment`);
+  console.log(`[${serial}] URL: ${videoUrl}`);
+  console.log(`[${serial}] Comment: ${comment}`);
+  console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
+
+  try {
+    // 1. Open TikTok video
+    console.log(`[${serial}] Step 1: Opening TikTok video...`);
+    await execAsync(`adb -s ${serial} shell am start -a android.intent.action.VIEW -d "${videoUrl}"`);
+    await sleep(5000);
+
+    // 2. Auto-detect comment icon (dt5)
+    console.log(`\n[${serial}] Step 2: Looking for comment icon...`);
+    let commentIcon = await getBoundsFromResourceId(serial, "com.ss.android.ugc.trill:id/dt5");
+    
+    if (!commentIcon.found && customCoords?.commentButton) {
+      console.log(`[${serial}] Using custom coords for comment icon`);
+      commentIcon = customCoords.commentButton;
+    } else if (!commentIcon.found) {
+      throw new Error("Comment icon not found!");
+    }
+    
+    console.log(`[${serial}] Tapping comment icon at (${commentIcon.x}, ${commentIcon.y})`);
+    await execAsync(`adb -s ${serial} shell input tap ${commentIcon.x} ${commentIcon.y}`);
+    await sleep(2000);
+
+    // 3. Auto-detect input field (dow)
+    console.log(`\n[${serial}] Step 3: Looking for input field...`);
+    let inputField = await getBoundsFromResourceId(serial, "com.ss.android.ugc.trill:id/dow");
+    
+    if (!inputField.found && customCoords?.inputField) {
+      console.log(`[${serial}] Using custom coords for input field`);
+      inputField = customCoords.inputField;
+    } else if (!inputField.found) {
+      throw new Error("Input field not found!");
+    }
+    
+    console.log(`[${serial}] Tapping input field at (${inputField.x}, ${inputField.y})`);
+    await execAsync(`adb -s ${serial} shell input tap ${inputField.x} ${inputField.y}`);
+    await sleep(1500);
+
+    // 4. Type comment
+    console.log(`\n[${serial}] Step 4: Typing comment...`);
+    const escapedComment = comment.replace(/ /g, "%s");
+    await execAsync(`adb -s ${serial} shell input text "${escapedComment}"`);
+    await sleep(1500);
+
+    // 5. Auto-detect post button (jcv)
+    console.log(`\n[${serial}] Step 5: Looking for post button...`);
+    let postBtn = await getBoundsFromResourceId(serial, "com.ss.android.ugc.trill:id/jcv");
+    
+    if (!postBtn.found && customCoords?.sendButton) {
+      console.log(`[${serial}] Using custom coords for post button`);
+      postBtn = customCoords.sendButton;
+    } else if (!postBtn.found) {
+      throw new Error("Post button not found!");
+    }
+    
+    console.log(`[${serial}] Tapping post button at (${postBtn.x}, ${postBtn.y})`);
+    await execAsync(`adb -s ${serial} shell input tap ${postBtn.x} ${postBtn.y}`);
+    await sleep(2000);
+
+    // 6. Close comment section
+    console.log(`\n[${serial}] Step 6: Closing comment section...`);
+    await execAsync(`adb -s ${serial} shell input keyevent 4`);
+    await sleep(1000);
+
+    console.log(`\n[${serial}] ✅ SUCCESS!`);
+    console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
+
+  } catch (err) {
+    console.error(`\n❌ [${serial}] ERROR:`, err.message);
+    throw err;
+  }
 }
 
 export async function POST(req) {
   try {
     const body = await req.json();
-    const { videoUrl, comment, serial, serials, useResourceId = true } = body;
+    const videoUrl = body.videoUrl || body.url || body.link;
+    const comment = body.comment || body.text;
+    const serial = body.serial || body.deviceSerial;
+    const serials = body.serials || body.deviceSerials;
+    const coords = body.coords || null;
 
-    console.log("[TikTok] Received request:", {
-      comment,
-      videoUrl,
-      serial,
-      serials,
-      useResourceId,
-    });
+    console.log("\n╔══════════════════════════════════════════════════╗");
+    console.log("║          TIKTOK VIDEO COMMENT API                ║");
+    console.log("╚══════════════════════════════════════════════════╝");
 
-    // Mass comment mode (multiple devices)
+    // ============================================
+    // MASS COMMENT MODE
+    // ============================================
     if (serials && Array.isArray(serials) && serials.length > 0) {
-      console.log(`[TikTok] Mass comment mode: ${serials.length} devices`);
+      console.log(`\n🚀 MASS MODE: ${serials.length} devices\n`);
 
       const results = [];
 
-      for (const deviceSerial of serials) {
+      for (let i = 0; i < serials.length; i++) {
+        const deviceSerial = serials[i];
+        
+        console.log(`\n[${i + 1}/${serials.length}] Processing: ${deviceSerial}`);
+
         try {
-          // Check if device is connected
-          const { stdout: deviceCheck } = await execAsync(`adb devices`);
-          if (!deviceCheck.includes(deviceSerial)) {
-            results.push({
-              serial: deviceSerial,
-              success: false,
-              error: `Device not found`,
-            });
-            continue;
+          const { stdout: deviceList } = await execAsync(`adb devices`);
+          if (!deviceList.includes(deviceSerial)) {
+            throw new Error("Device not found");
           }
 
-          // Verify device state
           const { stdout: state } = await execAsync(`adb -s ${deviceSerial} get-state`);
           if (state.trim() !== "device") {
-            results.push({
-              serial: deviceSerial,
-              success: false,
-              error: `Device not ready (state: ${state.trim()})`,
-            });
-            continue;
+            throw new Error(`Device not ready (${state.trim()})`);
           }
 
-          console.log(`[TikTok] Processing device: ${deviceSerial}`);
-
-          await sendTikTokCommentWithDelay(deviceSerial, videoUrl, comment, useResourceId);
+          await tiktokVideoComment(deviceSerial, comment, videoUrl, coords);
 
           results.push({
             serial: deviceSerial,
             success: true,
-            message: `Comment sent successfully`,
+            message: "Comment sent successfully"
           });
+
+          if (i < serials.length - 1) {
+            console.log(`⏳ Waiting 3s before next device...\n`);
+            await sleep(3000);
+          }
+
         } catch (err) {
-          console.error(`[TikTok] Error on ${deviceSerial}:`, err);
+          console.error(`❌ [${deviceSerial}] Failed:`, err.message);
           results.push({
             serial: deviceSerial,
             success: false,
-            error: err.message,
+            error: err.message
           });
         }
       }
 
-      const successCount = results.filter((r) => r.success).length;
+      const successCount = results.filter(r => r.success).length;
       const failCount = results.length - successCount;
 
       return NextResponse.json({
@@ -174,63 +181,31 @@ export async function POST(req) {
         total: serials.length,
         successCount,
         failCount,
-        results,
+        results
       });
     }
 
-    // Single device mode
+    // ============================================
+    // SINGLE DEVICE MODE
+    // ============================================
     if (!videoUrl || !comment || !serial) {
-      return NextResponse.json(
-        { error: "Missing required fields: videoUrl, comment, or serial" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Missing fields" }, { status: 400 });
     }
 
-    // Check if device is connected
-    try {
-      const { stdout: deviceCheck } = await execAsync(`adb devices`);
-      if (!deviceCheck.includes(serial)) {
-        return NextResponse.json(
-          {
-            error: `Device ${serial} not found. Please reconnect the device.`,
-            needReconnect: true,
-            serial,
-          },
-          { status: 400 }
-        );
-      }
-
-      // Verify device state
-      const { stdout: state } = await execAsync(`adb -s ${serial} get-state`);
-      if (state.trim() !== "device") {
-        return NextResponse.json(
-          {
-            error: `Device ${serial} is not ready (state: ${state.trim()}). Please check connection.`,
-            needReconnect: true,
-            serial,
-          },
-          { status: 400 }
-        );
-      }
-    } catch (err) {
-      return NextResponse.json(
-        {
-          error: `Failed to verify device ${serial}: ${err.message}`,
-          needReconnect: true,
-          serial,
-        },
-        { status: 400 }
-      );
+    const { stdout: deviceList } = await execAsync(`adb devices`);
+    if (!deviceList.includes(serial)) {
+      return NextResponse.json({ error: `Device ${serial} not found` }, { status: 400 });
     }
 
-    console.log("[TikTok] Starting comment process...");
-    console.log(`[TikTok] Using ${useResourceId ? "Resource ID" : "Coordinate"} method`);
+    await tiktokVideoComment(serial, comment, videoUrl, coords);
 
-    const result = await sendTikTokCommentWithDelay(serial, videoUrl, comment, useResourceId);
+    return NextResponse.json({ 
+      success: true,
+      message: "Comment sent successfully"
+    });
 
-    return NextResponse.json({ success: true, mode: "single", ...result });
   } catch (error) {
-    console.error("[TikTok] Error:", error);
-    return NextResponse.json({ error: error.message || "Unknown error" }, { status: 500 });
+    console.error("❌ ERROR:", error.message);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

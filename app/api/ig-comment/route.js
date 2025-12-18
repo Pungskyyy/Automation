@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { exec } from "child_process";
 import fs from "fs";
 import util from "util";
+import path from "path";
 
 const run = util.promisify(exec);
 
@@ -24,31 +25,45 @@ const IG_IDS = {
   inputField: "com.instagram.android:id/layout_comment_thread_edittext",
   postButton: "com.instagram.android:id/layout_comment_thread_post_button_icon",
   
-  // Instagram Reels (UPDATED - CORRECT!)
-  reelsCommentButton: "com.instagram.android:id/comment_button",           // Open kolom comment for reels
-  reelsInputField: "com.instagram.android:id/comment_composer_text_view",  // Add comment field for reels
-  reelsPostButton: "com.instagram.android:id/layout_comment_thread_post_button", // Post comment button for reels
-  reelsLikeButton: "com.instagram.android:id/row_comment_like_button",     // Like button (optional)
+  // Instagram Reels
+  reelsCommentButton: "com.instagram.android:id/comment_button",
+  reelsInputField: "com.instagram.android:id/comment_composer_text_view",
+  reelsPostButton: "com.instagram.android:id/layout_comment_thread_post_button",
 };
 
 export async function POST(req) {
-  console.log("[IG] POST handler started");
-  try {
-    const { comment, postUrl, serial, type } = await req.json();
-    console.log("[IG] Received data:", { comment, postUrl, serial, type });
+  console.log("\n═══════════════════════════════════════════");
+  console.log("   IG COMMENT API - START");
+  console.log("═══════════════════════════════════════════\n");
 
-    if (!comment) {
-      console.error("[IG] Comment harus diisi");
+  // Temp file paths
+  const tmpDir = process.cwd();
+  const xml1Path = path.join(tmpDir, "ig1.xml");
+  const xml2Path = path.join(tmpDir, "ig2.xml");
+
+  try {
+    const body = await req.json();
+    const { comment, postUrl, serial, type } = body;
+
+    console.log("📝 Request Data:");
+    console.log("   Comment:", comment);
+    console.log("   Post URL:", postUrl);
+    console.log("   Serial:", serial);
+    console.log("   Type:", type || "post");
+
+    // Validation
+    if (!comment || comment.trim() === "") {
+      console.error("❌ Comment kosong");
       return NextResponse.json({ error: "Comment harus diisi" }, { status: 400 });
     }
 
-    if (!postUrl) {
-      console.error("[IG] Post URL harus diisi");
+    if (!postUrl || postUrl.trim() === "") {
+      console.error("❌ Post URL kosong");
       return NextResponse.json({ error: "Post URL harus diisi" }, { status: 400 });
     }
 
-    if (!serial) {
-      console.error("[IG] Device serial harus diisi");
+    if (!serial || serial.trim() === "") {
+      console.error("❌ Device serial kosong");
       return NextResponse.json({ error: "Device serial harus diisi" }, { status: 400 });
     }
 
@@ -67,164 +82,203 @@ export async function POST(req) {
           postButton: IG_IDS.postButton,
         };
 
-    console.log(`[IG] Using device: ${serial}`);
-    console.log("[IG] FORCE STOP IG");
-    await adb(`${prefix} shell am force-stop com.instagram.android`);
-    console.log("[IG] IG stopped successfully");
+    console.log(`\n🔧 Mode: ${isReels ? "REELS" : "POST"}`);
 
-    console.log("[IG] OPEN URL:", postUrl);
-    await adb(`${prefix} shell am start -a android.intent.action.VIEW -d "${postUrl}"`);
-    console.log("[IG] URL opened successfully");
+    // Check device
+    console.log("\n1️⃣ Checking device...");
+    try {
+      const { stdout: devices } = await run("adb devices");
+      console.log("   Connected devices:", devices.trim());
+      
+      if (!devices.includes(serial)) {
+        throw new Error(`Device ${serial} tidak ditemukan`);
+      }
 
-    // Wait for Instagram to load
+      const { stdout: state } = await run(`adb -s ${serial} get-state`);
+      if (state.trim() !== "device") {
+        throw new Error(`Device tidak ready: ${state.trim()}`);
+      }
+      
+      console.log("   ✅ Device ready");
+    } catch (err) {
+      console.error("   ❌ Device check failed:", err.message);
+      return NextResponse.json({ 
+        error: `Device error: ${err.message}`,
+        needReconnect: true 
+      }, { status: 400 });
+    }
+
+    // Force stop Instagram
+    console.log("\n2️⃣ Force stopping Instagram...");
+    await run(`${prefix} shell am force-stop com.instagram.android`);
+    await delay(1000);
+    console.log("   ✅ Instagram stopped");
+
+    // Open URL
+    console.log("\n3️⃣ Opening Instagram URL...");
+    await run(`${prefix} shell am start -a android.intent.action.VIEW -d "${postUrl}"`);
+    console.log("   ✅ URL opened");
     await delay(5000);
 
-    console.log("[IG] DUMP UI 1");
-    await adb(`${prefix} shell uiautomator dump /sdcard/ig1.xml`);
-    await adb(`${prefix} pull /sdcard/ig1.xml`);
-    console.log("[IG] UI dump 1 completed");
-
-    let xml1 = "";
-    try {
-      xml1 = fs.readFileSync("ig1.xml", "utf8");
-      console.log("[IG] XML 1 Loaded Successfully");
-    } catch (err) {
-      console.error("[IG] Failed to load ig1.xml:", err);
+    // UI Dump 1 - Find comment button
+    console.log("\n4️⃣ Finding comment button...");
+    await run(`${prefix} shell uiautomator dump /sdcard/ig1.xml`);
+    await run(`${prefix} pull /sdcard/ig1.xml ${xml1Path}`);
+    
+    let commentTap = FB.comment;
+    if (fs.existsSync(xml1Path)) {
+      const xml1 = fs.readFileSync(xml1Path, "utf8");
+      const commentNode = findNode(xml1, [IDS.commentButton]);
+      
+      if (commentNode?.bounds) {
+        commentTap = getCenter(commentNode.bounds);
+        console.log(`   ✅ Found at (${Math.round(commentTap.x)}, ${Math.round(commentTap.y)})`);
+      } else {
+        console.log(`   ⚠️ Using fallback (${commentTap.x}, ${commentTap.y})`);
+      }
     }
 
-    /* FIND COMMENT BUTTON */
-    let commentNode = findNode(xml1, [IDS.commentButton]);
-    let commentTap = commentNode?.bounds ? getCenter(commentNode.bounds) : FB.comment;
-
-    console.log("[IG] TAP COMMENT BUTTON:", commentTap);
-    await tap(prefix, commentTap.x, commentTap.y);
-    console.log("[IG] Comment button tapped");
-
-    await delay(6000);
-
-    /* DUMP UI 2 (input field) */
-    console.log("[IG] DUMP UI 2");
-    await adb(`${prefix} shell uiautomator dump /sdcard/ig2.xml`);
-    await adb(`${prefix} pull /sdcard/ig2.xml`);
-    console.log("[IG] UI dump 2 completed");
-
-    let xml2 = "";
-    try {
-      xml2 = fs.readFileSync("ig2.xml", "utf8");
-      console.log("[IG] XML 2 Loaded Successfully");
-    } catch (err) {
-      console.error("[IG] Failed to load ig2.xml:", err);
-    }
-
-    /* FIND INPUT FIELD */
-    let inputNode = findNode(xml2, [IDS.inputField]);
-    let inputTap = inputNode?.bounds ? getCenter(inputNode.bounds) : FB.input;
-
-    console.log("[IG] TAP INPUT FIELD:", inputTap);
-    await tap(prefix, inputTap.x, inputTap.y);
-    console.log("[IG] Input field tapped");
-
-    await delay(1500);
-
-    /* CLEAR INPUT */
-    console.log("[IG] CLEAR INPUT FIELD");
-    for (let i = 0; i < 30; i++) {
-      await adb(`${prefix} shell input keyevent 67`);
-    }
-    console.log("[IG] Input field cleared");
-
-    /* TYPE COMMENT */
-    console.log("[IG] TYPING COMMENT:", comment);
-    for (let c of comment) {
-      await adb(`${prefix} shell input text "${c === " " ? "%s" : c}"`);
-      await delay(60 + Math.random() * 60);
-    }
-    console.log("[IG] Comment typed");
-
-    await delay(700);
-
-    /* FIND SEND BUTTON */
-    let sendNode = findNode(xml2, [IDS.postButton]);
-    let sendTap = sendNode?.bounds ? getCenter(sendNode.bounds) : FB.send;
-
-    console.log("[IG] TAP SEND BUTTON:", sendTap);
-    await tap(prefix, sendTap.x, sendTap.y);
-    console.log("[IG] Send button tapped");
-
+    // Tap comment button
+    console.log("\n5️⃣ Tapping comment button...");
+    await run(`${prefix} shell input tap ${Math.round(commentTap.x)} ${Math.round(commentTap.y)}`);
     await delay(3000);
+    console.log("   ✅ Comment button tapped");
 
-    console.log("[IG] COMMENT SENT SUCCESSFULLY");
+    // UI Dump 2 - Find input field
+    console.log("\n6️⃣ Finding input field & send button...");
+    await run(`${prefix} shell uiautomator dump /sdcard/ig2.xml`);
+    await run(`${prefix} pull /sdcard/ig2.xml ${xml2Path}`);
+    
+    let inputTap = FB.input;
+    let sendTap = FB.send;
+    
+    if (fs.existsSync(xml2Path)) {
+      const xml2 = fs.readFileSync(xml2Path, "utf8");
+      
+      const inputNode = findNode(xml2, [IDS.inputField]);
+      if (inputNode?.bounds) {
+        inputTap = getCenter(inputNode.bounds);
+        console.log(`   ✅ Input found at (${Math.round(inputTap.x)}, ${Math.round(inputTap.y)})`);
+      } else {
+        console.log(`   ⚠️ Using fallback input (${inputTap.x}, ${inputTap.y})`);
+      }
+      
+      const sendNode = findNode(xml2, [IDS.postButton]);
+      if (sendNode?.bounds) {
+        sendTap = getCenter(sendNode.bounds);
+        console.log(`   ✅ Send found at (${Math.round(sendTap.x)}, ${Math.round(sendTap.y)})`);
+      } else {
+        console.log(`   ⚠️ Using fallback send (${sendTap.x}, ${sendTap.y})`);
+      }
+    }
+
+    // Tap input field
+    console.log("\n7️⃣ Tapping input field...");
+    await run(`${prefix} shell input tap ${Math.round(inputTap.x)} ${Math.round(inputTap.y)}`);
+    await delay(1500);
+    console.log("   ✅ Input field tapped");
+
+    // Clear input
+    console.log("\n8️⃣ Clearing input...");
+    await run(`${prefix} shell input keyevent KEYCODE_MOVE_END`);
+    for (let i = 0; i < 50; i++) {
+      await run(`${prefix} shell input keyevent KEYCODE_DEL`);
+    }
+    await delay(500);
+    console.log("   ✅ Input cleared");
+
+    // Type comment
+    console.log("\n9️⃣ Typing comment...");
+    const escapedComment = comment.replace(/ /g, "%s");
+    await run(`${prefix} shell input text "${escapedComment}"`);
+    await delay(1500);
+    console.log("   ✅ Comment typed");
+
+    // Tap send button
+    console.log("\n🔟 Tapping send button...");
+    await run(`${prefix} shell input tap ${Math.round(sendTap.x)} ${Math.round(sendTap.y)}`);
+    await delay(2500);
+    console.log("   ✅ Send button tapped");
+
+    // Close keyboard
+    await run(`${prefix} shell input keyevent KEYCODE_BACK`);
+    await delay(500);
+
+    // Cleanup
+    try {
+      if (fs.existsSync(xml1Path)) fs.unlinkSync(xml1Path);
+      if (fs.existsSync(xml2Path)) fs.unlinkSync(xml2Path);
+    } catch (cleanupErr) {
+      console.error("⚠️ Cleanup error:", cleanupErr.message);
+    }
+
+    console.log("\n═══════════════════════════════════════════");
+    console.log("   ✅ COMMENT SENT SUCCESSFULLY");
+    console.log("═══════════════════════════════════════════\n");
+
     return NextResponse.json({
       success: true,
       message: "Instagram comment berhasil dikirim",
-      serial: serial,
-      postUrl: postUrl,
-      action: "DONE",
-      taps: { commentTap, inputTap, sendTap }
+      serial,
+      postUrl,
+      type: isReels ? "reels" : "post",
+      coordinates: {
+        commentButton: commentTap,
+        inputField: inputTap,
+        sendButton: sendTap
+      }
     });
 
   } catch (err) {
-    console.error("[IG] Error in POST handler:", err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
-  } finally {
-    console.log("[IG] POST handler finished");
+    console.error("\n❌ ERROR:", err.message);
+    console.error("Stack:", err.stack);
+    
+    // Cleanup on error
+    try {
+      if (fs.existsSync(xml1Path)) fs.unlinkSync(xml1Path);
+      if (fs.existsSync(xml2Path)) fs.unlinkSync(xml2Path);
+    } catch (cleanupErr) {
+      console.error("⚠️ Cleanup error:", cleanupErr.message);
+    }
+
+    return NextResponse.json({ 
+      error: err.message || "Unknown error occurred",
+      details: err.stack
+    }, { status: 500 });
   }
 }
 
-/* UTIL */
-async function adb(c) {
-  console.log("[ADB] Checking devices...");
-  try {
-    const devices = await run("adb devices");
-    console.log("[ADB] Connected devices:", devices.stdout);
-    if (!devices.stdout.includes("device")) {
-      console.error("[ADB] No devices connected.");
-      throw new Error("No devices connected.");
-    }
-  } catch (error) {
-    console.error("[ADB] Failed to check devices:", error.message);
-    throw error;
-  }
+/* UTILITY FUNCTIONS */
 
-  console.log("[ADB] Executing command:", c);
-  try {
-    const result = await run(c);
-    console.log("[ADB] Command output:", result.stdout);
-    if (result.stderr) {
-      console.error("[ADB] Command error output:", result.stderr);
-    }
-    if (!result.stdout && !result.stderr) {
-      console.warn("[ADB] Command executed but no output detected. Check if the device is responsive.");
-    }
-    return result;
-  } catch (error) {
-    console.error("[ADB] Command failed:", c);
-    console.error("[ADB] Error:", error.message);
-    throw error;
-  }
-}
-async function tap(prefix, x, y) {
-  return adb(`${prefix} shell input tap ${x} ${y}`);
-}
 function delay(ms) {
-  return new Promise((res) => setTimeout(res, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
+
 function getCenter(bounds) {
-  const n = bounds.match(/\d+/g).map(Number);
-  return { x: (n[0] + n[2]) / 2, y: (n[1] + n[3]) / 2 };
+  const nums = bounds.match(/\d+/g).map(Number);
+  return { 
+    x: Math.round((nums[0] + nums[2]) / 2), 
+    y: Math.round((nums[1] + nums[3]) / 2) 
+  };
 }
+
 function findNode(xml, keys) {
   if (!xml) return null;
 
-  const re = /<node(.*?)\/>/g;
-  let m;
+  const nodeRegex = /<node(.*?)\/>/g;
+  let match;
 
-  while ((m = re.exec(xml)) !== null) {
-    const raw = m[1].toLowerCase();
-    if (keys.some(k => raw.includes(k.toLowerCase()))) {
-      const b = raw.match(/bounds="(.*?)"/)?.[1];
-      return { raw, bounds: b };
+  while ((match = nodeRegex.exec(xml)) !== null) {
+    const nodeContent = match[1].toLowerCase();
+    
+    if (keys.some(key => nodeContent.includes(key.toLowerCase()))) {
+      const boundsMatch = nodeContent.match(/bounds="(.*?)"/);
+      return { 
+        raw: match[1], 
+        bounds: boundsMatch ? boundsMatch[1] : null 
+      };
     }
   }
+  
   return null;
 }

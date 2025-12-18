@@ -1,6 +1,4 @@
 {
-  "/not-found": "app/not-found.js",
-  "/api/devices/route": "app/api/devices/route.js",
-  "/page": "app/page.js",
-  "/api/tiktok-comment/route": "app/api/tiktok-comment/route.js"
+  "/api/ig-comment/route": "app/api/ig-comment/route.js",
+  "/page": "app/page.js"
 }
