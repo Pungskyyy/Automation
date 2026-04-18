@@ -1,0 +1,2786 @@
+"use client";
+
+import { useState, useEffect } from "react";
+
+export default function HomePage() {
+  // Auth States
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
+
+  const [devices, setDevices] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [activeSection, setActiveSection] = useState("home");
+  const [selectedDevices, setSelectedDevices] = useState([]);
+  const [logs, setLogs] = useState([]);
+  const [deviceLogs, setDeviceLogs] = useState({});
+  const [deviceScreenshots, setDeviceScreenshots] = useState({});
+
+  // Logo error states
+  const [logoError, setLogoError] = useState({
+    loginLeft: false,
+    loginRight: false,
+    sidebar: false,
+    home: false
+  });
+
+  // Sidebar state untuk expand/collapse platform
+  const [expandedPlatforms, setExpandedPlatforms] = useState({});
+
+  // TikTok Comment States
+  const [tiktokVideoUrl, setTiktokVideoUrl] = useState("");
+  const [tiktokVideoComment, setTiktokVideoComment] = useState("");
+  const [tiktokCommentLoading, setTiktokCommentLoading] = useState(false);
+
+  // TikTok Report States
+  const [tiktokReportUsername, setTiktokReportUsername] = useState("");
+  const [tiktokReportProfileUrl, setTiktokReportProfileUrl] = useState("");
+  const [tiktokReportVideoUrl, setTiktokReportVideoUrl] = useState("");
+  const [tiktokReportReason, setTiktokReportReason] = useState("spam");
+  const [tiktokReportLoading, setTiktokReportLoading] = useState(false);
+
+  // Instagram Post States
+  const [igPostUrl, setIgPostUrl] = useState("");
+  const [igPostComment, setIgPostComment] = useState("");
+  const [igPostLoading, setIgPostLoading] = useState(false);
+
+  // Instagram Reels States
+  const [igReelsUrl, setIgReelsUrl] = useState("");
+  const [igReelsComment, setIgReelsComment] = useState("");
+  const [igReelsLoading, setIgReelsLoading] = useState(false);
+
+  // Instagram Report States
+  const [igReportUsername, setIgReportUsername] = useState("");
+  const [igReportProfileUrl, setIgReportProfileUrl] = useState("");
+  const [igReportPostUrl, setIgReportPostUrl] = useState("");
+  const [igReportReason, setIgReportReason] = useState("spam");
+  const [igReportLoading, setIgReportLoading] = useState(false);
+
+  // Facebook Comment States
+  const [fbPostUrl, setFbPostUrl] = useState("");
+  const [fbComment, setFbComment] = useState("");
+  const [fbCommentLoading, setFbCommentLoading] = useState(false);
+
+  // Facebook Report States
+  const [fbReportUsername, setFbReportUsername] = useState("");
+  const [fbReportProfileUrl, setFbReportProfileUrl] = useState("");
+  const [fbReportPostUrl, setFbReportPostUrl] = useState("");
+  const [fbReportReason, setFbReportReason] = useState("spam");
+  const [fbReportLoading, setFbReportLoading] = useState(false);
+
+  // X (Twitter) Comment States
+  const [xTweetUrl, setXTweetUrl] = useState("");
+  const [xComment, setXComment] = useState("");
+  const [xCommentLoading, setXCommentLoading] = useState(false);
+
+  // X (Twitter) Report States
+  const [xReportUsername, setXReportUsername] = useState("");
+  const [xReportProfileUrl, setXReportProfileUrl] = useState("");
+  const [xReportTweetUrl, setXReportTweetUrl] = useState("");
+  const [xReportReason, setXReportReason] = useState("spam");
+  const [xReportLoading, setXReportLoading] = useState(false);
+
+  // ✅ FIXED: Disable auto-login - always show login page on restart
+  useEffect(() => {
+    setLoading(false);
+  }, []);
+
+  async function fetchDevices() {
+    try {
+      const res = await fetch("/api/devices");
+      const data = await res.json();
+      setDevices(data.devices || []);
+    } catch (err) {
+      console.error("Error fetching devices:", err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function handleLogin(e) {
+    e.preventDefault();
+    if (username === "admin" && password === "admin123") {
+      setIsAuthenticated(true);
+      localStorage.setItem("autocomment_auth", "true");
+      setLoginError("");
+      fetchDevices();
+    } else {
+      setLoginError("Username atau password salah!");
+    }
+  }
+
+  function handleLogout() {
+    setIsAuthenticated(false);
+    localStorage.removeItem("autocomment_auth");
+    setUsername("");
+    setPassword("");
+    setLogoError({
+      loginLeft: false,
+      loginRight: false,
+      sidebar: false,
+      home: false
+    });
+  }
+
+  function addLog(msg, type = "info", deviceSerial = null) {
+    const t = new Date().toLocaleTimeString();
+    const timestamp = new Date().toISOString();
+    const icon = type === "success" ? "✅" : type === "error" ? "❌" : "ℹ️";
+    const logEntry = { time: t, timestamp, msg, type, icon, device: deviceSerial };
+    
+    // Add to general logs
+    setLogs(prev => [logEntry, ...prev.slice(0, 100)]);
+    
+    // ✅ Add to device-specific logs if deviceSerial is provided
+    if (deviceSerial) {
+      setDeviceLogs(prev => ({
+        ...prev,
+        [deviceSerial]: [logEntry, ...(prev[deviceSerial] || []).slice(0, 50)]
+      }));
+    }
+  }
+
+  // ✅ Screenshot Helper Function
+  async function takeScreenshot(serial, actionType) {
+    try {
+      const res = await fetch("/api/screenshot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ serial, actionType })
+      });
+
+      const data = await res.json();
+      
+      if (data.success) {
+        // Save screenshot to device screenshots state
+        setDeviceScreenshots(prev => ({
+          ...prev,
+          [serial]: [
+            { url: data.url, actionType, timestamp: data.timestamp },
+            ...(prev[serial] || []).slice(0, 19) // Keep last 20 screenshots per device
+          ]
+        }));
+        
+        return data.url;
+      }
+      return null;
+    } catch (error) {
+      console.error("Screenshot failed:", error);
+      return null;
+  }
+  }
+
+  const toggleDevice = (serial) => {
+    if (selectedDevices.includes(serial)) {
+      setSelectedDevices(selectedDevices.filter(s => s !== serial));
+    } else {
+      setSelectedDevices([...selectedDevices, serial]);
+    }
+  };
+
+  const selectAllDevices = () => {
+    setSelectedDevices(devices.map(d => d.serial));
+  };
+
+  const deselectAllDevices = () => {
+    setSelectedDevices([]);
+  };
+
+  const togglePlatform = (platformId) => {
+    setExpandedPlatforms(prev => ({
+      ...prev,
+      [platformId]: !prev[platformId]
+    }));
+  };
+
+  // TikTok Video Comment Handler
+  async function handleTikTokComment() {
+    if (!tiktokVideoUrl || !tiktokVideoComment) {
+      addLog("Video URL dan Comment harus diisi", "error");
+      return;
+    }
+    if (selectedDevices.length === 0) {
+      addLog("Pilih minimal 1 device", "error");
+      return;
+    }
+
+    setTiktokCommentLoading(true);
+    addLog(`Memulai comment ke ${selectedDevices.length} device...`, "info");
+
+    try {
+      const res = await fetch("/api/tiktok-comment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          videoUrl: tiktokVideoUrl,
+          comment: tiktokVideoComment,
+          serials: selectedDevices,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        addLog(`✅ Selesai! Success: ${data.successCount}/${data.total}`, "success");
+        data.results?.forEach(async r => {
+          addLog(`TikTok Comment: ${r.success ? 'Success' : r.error}`, r.success ? "success" : "error", r.serial);
+          if (r.success) await takeScreenshot(r.serial, "tiktok-comment");
+        });
+      } else {
+        addLog(`Error: ${data.error}`, "error");
+      }
+    } catch (err) {
+      addLog(`Error: ${err.message}`, "error");
+    }
+
+    setTiktokCommentLoading(false);
+  }
+
+  // TikTok Report Handler
+  async function handleTikTokReport() {
+    if (!tiktokReportUsername && !tiktokReportProfileUrl && !tiktokReportVideoUrl) {
+      addLog("Isi minimal satu target", "error");
+      return;
+    }
+    if (selectedDevices.length === 0) {
+      addLog("Pilih minimal 1 device", "error");
+      return;
+    }
+
+    setTiktokReportLoading(true);
+    addLog(`Memulai report dengan ${selectedDevices.length} device...`, "info");
+
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const serial of selectedDevices) {
+      try {
+        const res = await fetch("/api/tiktok-report", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            targetUsername: tiktokReportUsername,
+            profileUrl: tiktokReportProfileUrl,
+            videoUrl: tiktokReportVideoUrl,
+            reportReason: tiktokReportReason,
+            serial,
+          }),
+        });
+
+        const data = await res.json();
+        if (res.ok) {
+          addLog("TikTok Report: Success", "success", serial);
+          await takeScreenshot(serial, "tiktok-report");
+          await takeScreenshot(serial, "tiktok-report");
+          await takeScreenshot(serial, "tiktok-report");
+          successCount++;
+        } else {
+          throw new Error(data.error);
+        }
+      } catch (err) {
+        addLog(`TikTok Report: ${err.message}`, "error", serial);
+        failCount++;
+      }
+      await new Promise(r => setTimeout(r, 1000));
+    }
+
+    addLog(`Selesai! Success: ${successCount}, Failed: ${failCount}`, "success");
+    setTiktokReportLoading(false);
+  }
+
+  // Instagram Post Comment Handler
+  async function handleIgPostComment() {
+    if (!igPostUrl || !igPostComment) {
+      addLog("Post URL dan Comment harus diisi", "error");
+      return;
+    }
+    if (selectedDevices.length === 0) {
+      addLog("Pilih minimal 1 device", "error");
+      return;
+    }
+
+    setIgPostLoading(true);
+    addLog(`Memulai comment ke ${selectedDevices.length} device...`, "info");
+
+    try {
+      const res = await fetch("/api/ig-comment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          postUrl: igPostUrl,
+          comment: igPostComment,
+          serials: selectedDevices,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        // Loop through results and take screenshots
+        for (const r of (data.results || [])) {
+          addLog(`IG Post: ${r.success ? "Success" : r.error}`, r.success ? "success" : "error", r.serial);
+          if (r.success) await takeScreenshot(r.serial, "ig-post");
+        }
+        addLog(`✅ Selesai! Success: ${data.successCount}/${data.total}`, "success");
+      } else {
+        addLog(`Error: ${data.error}`, "error");
+      }
+    } catch (err) {
+      addLog(`Error: ${err.message}`, "error");
+    }
+
+    setIgPostLoading(false);
+  }
+
+  // Instagram Reels Comment Handler
+  async function handleIgReelsComment() {
+    if (!igReelsUrl || !igReelsComment) {
+      addLog("Reels URL dan Comment harus diisi", "error");
+      return;
+    }
+    if (selectedDevices.length === 0) {
+      addLog("Pilih minimal 1 device", "error");
+      return;
+    }
+
+    setIgReelsLoading(true);
+    addLog(`Memulai comment ke ${selectedDevices.length} device...`, "info");
+
+    try {
+      const res = await fetch("/api/ig-comment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          postUrl: igReelsUrl,
+          comment: igReelsComment,
+          serials: selectedDevices,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        addLog(`✅ Selesai! Success: ${data.successCount}/${data.total}`, "success");
+        // Loop through results and take screenshots
+        for (const r of (data.results || [])) {
+          addLog(`IG Reels: ${r.success ? "Success" : r.error}`, r.success ? "success" : "error", r.serial);
+          if (r.success) await takeScreenshot(r.serial, "ig-reels");
+        }
+      } else {
+        addLog(`Error: ${data.error}`, "error");
+      }
+    } catch (err) {
+      addLog(`Error: ${err.message}`, "error");
+    }
+
+    setIgReelsLoading(false);
+  }
+
+  // Instagram Report Handler
+  async function handleIgReport() {
+    if (!igReportUsername && !igReportProfileUrl && !igReportPostUrl) {
+      addLog("Isi minimal satu target", "error");
+      return;
+    }
+    if (selectedDevices.length === 0) {
+      addLog("Pilih minimal 1 device", "error");
+      return;
+    }
+  
+    setIgReportLoading(true);
+    addLog(`Memulai report dengan ${selectedDevices.length} device...`, "info");
+  
+    try {
+      const res = await fetch("/api/ig-report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          targetUsername: igReportUsername,
+          profileUrl: igReportProfileUrl,
+          postUrl: igReportPostUrl,
+          reportReason: igReportReason,
+          serials: selectedDevices  // ✅ FIXED: Kirim array serials
+        })
+      });
+  
+      const data = await res.json();
+  
+      if (data.success) {
+        addLog(`✅ Report selesai! (${data.successCount}/${data.total})`, "success");
+        
+        // Log individual results
+        data.results?.forEach(async (result) => {
+          if (result.success) {
+            addLog("Instagram Report: Success", "success", result.serial);
+            await takeScreenshot(result.serial, "ig-report");
+          } else {
+            addLog(`Instagram Report: ${result.error}`, "error", result.serial);
+          }
+        });
+  
+        // Clear form
+        setIgReportUsername("");
+        setIgReportProfileUrl("");
+        setIgReportPostUrl("");
+      } else {
+        addLog(`❌ ${data.error}`, "error");
+      }
+    } catch (err) {
+      addLog(`❌ Error: ${err.message}`, "error");
+    } finally {
+      setIgReportLoading(false);
+    }
+  }
+  // Facebook Comment Handler
+  async function handleFbComment() {
+    if (!fbPostUrl || !fbComment) {
+      addLog("Post URL dan Comment harus diisi", "error");
+      return;
+    }
+    if (selectedDevices.length === 0) {
+      addLog("Pilih minimal 1 device", "error");
+      return;
+    }
+
+    setFbCommentLoading(true);
+    addLog(`Memulai comment ke ${selectedDevices.length} device...`, "info");
+
+    try {
+      const res = await fetch("/api/fb-comment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          postUrl: fbPostUrl,
+          comment: fbComment,
+          serials: selectedDevices,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        addLog(`✅ Selesai! Success: ${data.successCount}/${data.total}`, "success");
+        // Loop through results and take screenshots
+        for (const r of (data.results || [])) {
+          addLog(`FB Comment: ${r.success ? "Success" : r.error}`, r.success ? "success" : "error", r.serial);
+          if (r.success) await takeScreenshot(r.serial, "fb-comment");
+        }
+      } else {
+        addLog(`Error: ${data.error}`, "error");
+      }
+    } catch (err) {
+      addLog(`Error: ${err.message}`, "error");
+    }
+
+    setFbCommentLoading(false);
+  }
+
+  // Facebook Report Handler
+  async function handleFbReport() {
+    if (!fbReportUsername && !fbReportProfileUrl && !fbReportPostUrl) {
+      addLog("Isi minimal satu target", "error");
+      return;
+    }
+    if (selectedDevices.length === 0) {
+      addLog("Pilih minimal 1 device", "error");
+      return;
+    }
+
+    setFbReportLoading(true);
+    addLog(`Memulai report dengan ${selectedDevices.length} device...`, "info");
+
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const serial of selectedDevices) {
+      try {
+        const res = await fetch("/api/fb-report", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            targetUsername: fbReportUsername,
+            profileUrl: fbReportProfileUrl,
+            postUrl: fbReportPostUrl,
+            reportReason: fbReportReason,
+            serial,
+          }),
+        });
+
+        const data = await res.json();
+        if (res.ok) {
+          addLog("Facebook Report: Success", "success", serial);
+          await takeScreenshot(serial, "fb-report");
+          successCount++;
+        } else {
+          throw new Error(data.error);
+        }
+      } catch (err) {
+        addLog(`${serial}: ${err.message}`, "error");
+        failCount++;
+      }
+      await new Promise(r => setTimeout(r, 1000));
+    }
+
+    addLog(`Selesai! Success: ${successCount}, Failed: ${failCount}`, "success");
+    setFbReportLoading(false);
+  }
+
+  // X (Twitter) Comment Handler
+  async function handleXComment() {
+    if (!xTweetUrl || !xComment) {
+      addLog("Tweet URL dan Comment harus diisi", "error");
+      return;
+    }
+    if (selectedDevices.length === 0) {
+      addLog("Pilih minimal 1 device", "error");
+      return;
+    }
+
+    setXCommentLoading(true);
+    addLog(`Memulai reply ke ${selectedDevices.length} device...`, "info");
+
+    try {
+      const res = await fetch("/api/x-comment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tweetUrl: xTweetUrl,
+          comment: xComment,
+          serials: selectedDevices,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        addLog(`✅ Selesai! Success: ${data.successCount}/${data.total}`, "success");
+        // Loop through results and take screenshots
+        for (const r of (data.results || [])) {
+          addLog(`X Reply: ${r.success ? "Success" : r.error}`, r.success ? "success" : "error", r.serial);
+          if (r.success) await takeScreenshot(r.serial, "x-reply");
+        }
+      } else {
+        addLog(`Error: ${data.error}`, "error");
+      }
+    } catch (err) {
+      addLog(`Error: ${err.message}`, "error");
+    }
+
+    setXCommentLoading(false);
+  }
+
+  // X (Twitter) Report Handler
+  async function handleXReport() {
+    if (!xReportUsername && !xReportProfileUrl && !xReportTweetUrl) {
+      addLog("Isi minimal satu target", "error");
+      return;
+    }
+    if (selectedDevices.length === 0) {
+      addLog("Pilih minimal 1 device", "error");
+      return;
+    }
+
+    setXReportLoading(true);
+    addLog(`Memulai report dengan ${selectedDevices.length} device...`, "info");
+
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const serial of selectedDevices) {
+      try {
+        const res = await fetch("/api/x-report", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            targetUsername: xReportUsername,
+            profileUrl: xReportProfileUrl,
+            tweetUrl: xReportTweetUrl,
+            reportReason: xReportReason,
+            serial,
+          }),
+        });
+
+        const data = await res.json();
+        if (res.ok) {
+          addLog(`${serial}: Success`, "success");
+          successCount++;
+        } else {
+          throw new Error(data.error);
+        }
+      } catch (err) {
+        addLog(`${serial}: ${err.message}`, "error");
+        failCount++;
+      }
+      await new Promise(r => setTimeout(r, 1000));
+    }
+
+    addLog(`Selesai! Success: ${successCount}, Failed: ${failCount}`, "success");
+    setXReportLoading(false);
+  }
+
+  // Menu Structure with Nested Platforms
+  const menuItems = [
+    { id: "home", label: "Home", icon: "🏠", type: "single" },
+    { id: "devices", label: "Device Manager", icon: "📱", type: "single" },
+    { id: "device-logs", label: "Device Logs", icon: "📊", type: "single" },
+    {
+      id: "tiktok",
+      label: "TikTok",
+      type: "platform",
+      logo: "https://cdn.simpleicons.org/tiktok/000000",
+      submenu: [
+        { id: "tiktok-comment", label: "Video Comment", icon: "💬" },
+        { id: "tiktok-report", label: "Report", icon: "🚨" }
+      ]
+    },
+    {
+      id: "instagram",
+      label: "Instagram",
+      type: "platform",
+      logo: "https://cdn.simpleicons.org/instagram/E4405F",
+      submenu: [
+        { id: "ig-post", label: "Post Comment", icon: "💬" },
+        { id: "ig-reels", label: "Reels Comment", icon: "🎬" },
+        { id: "ig-report", label: "Report", icon: "⚠️" }
+      ]
+    },
+    {
+      id: "facebook",
+      label: "Facebook",
+      type: "platform",
+      logo: "https://cdn.simpleicons.org/facebook/1877F2",
+      submenu: [
+        { id: "fb-comment", label: "Comment", icon: "💬" },
+        { id: "fb-report", label: "Report", icon: "🚫" }
+      ]
+    },
+    {
+      id: "x",
+      label: "X (Twitter)",
+      type: "platform",
+      logo: "https://cdn.simpleicons.org/x/000000",
+      submenu: [
+        { id: "x-comment", label: "Reply", icon: "💬" },
+        { id: "x-report", label: "Report", icon: "⛔" }
+      ]
+    },
+  ];
+
+  // Reusable Components
+  const DeviceSelector = () => (
+    <div style={{
+      background: "white",
+      border: "1px solid #e2e8f0",
+      borderRadius: 16,
+      padding: 24,
+      boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
+    }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <h3 style={{ fontSize: 18, margin: 0, color: "#f59e0b", fontWeight: 700 }}>
+          📱 Select Devices ({selectedDevices.length}/{devices.length})
+        </h3>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            onClick={selectAllDevices}
+            style={{
+              padding: "6px 12px",
+              borderRadius: 8,
+              background: "#dcfce7",
+              border: "1px solid #86efac",
+              color: "#16a34a",
+              cursor: "pointer",
+              fontSize: 12,
+              fontWeight: 600
+            }}
+          >
+            Select All
+          </button>
+          <button
+            onClick={deselectAllDevices}
+            style={{
+              padding: "6px 12px",
+              borderRadius: 8,
+              background: "#fee2e2",
+              border: "1px solid #fca5a5",
+              color: "#dc2626",
+              cursor: "pointer",
+              fontSize: 12,
+              fontWeight: 600
+            }}
+          >
+            Deselect All
+          </button>
+        </div>
+      </div>
+
+      <div style={{ maxHeight: 400, overflowY: "auto" }}>
+        {devices.length === 0 ? (
+          <div style={{ textAlign: "center", padding: 40, color: "#94a3b8" }}>
+            <div style={{ fontSize: 48, marginBottom: 16 }}>📱</div>
+            No devices connected
+          </div>
+        ) : (
+          devices.map(d => {
+            const selected = selectedDevices.includes(d.serial);
+            return (
+              <div
+                key={d.serial}
+                onClick={() => toggleDevice(d.serial)}
+                style={{
+                  padding: 14,
+                  marginBottom: 8,
+                  borderRadius: 10,
+                  cursor: "pointer",
+                  background: selected ? "#dcfce7" : "#f8fafc",
+                  border: selected ? "2px solid #22c55e" : "1px solid #e2e8f0",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  transition: "all 0.2s"
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: 13, fontFamily: "monospace", fontWeight: 600, color: "#334155" }}>
+                    {d.serial}
+                  </div>
+                  <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
+                    {d.model || "Unknown Model"}
+                  </div>
+                </div>
+                {selected && (
+                  <div style={{
+                    width: 24,
+                    height: 24,
+                    borderRadius: "50%",
+                    background: "#22c55e",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "white",
+                    fontSize: 14,
+                    fontWeight: 700
+                  }}>
+                    ✓
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+
+  const LogsPanel = () => (
+    <div style={{
+      background: "white",
+      border: "1px solid #e2e8f0",
+      borderRadius: 16,
+      padding: 24,
+      boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
+    }}>
+      <h3 style={{ fontSize: 18, marginBottom: 16, color: "#3b82f6", fontWeight: 700 }}>
+        📝 Activity Logs
+      </h3>
+      <div style={{ maxHeight: 300, overflowY: "auto", fontSize: 12, fontFamily: "monospace" }}>
+        {logs.length === 0 ? (
+          <div style={{ textAlign: "center", padding: 40, color: "#94a3b8" }}>
+            No logs yet
+          </div>
+        ) : (
+          logs.map((log, i) => (
+            <div
+              key={i}
+              style={{
+                padding: "8px 12px",
+                marginBottom: 6,
+                borderRadius: 8,
+                background: log.type === "success"
+                  ? "#dcfce7"
+                  : log.type === "error"
+                  ? "#fee2e2"
+                  : "#dbeafe",
+                border: `1px solid ${log.type === "success"
+                  ? "#86efac"
+                  : log.type === "error"
+                  ? "#fca5a5"
+                  : "#93c5fd"}`,
+                color: log.type === "success"
+                  ? "#16a34a"
+                  : log.type === "error"
+                  ? "#dc2626"
+                  : "#2563eb"
+              }}
+            >
+              {log.icon} [{log.time}] {log.msg}
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+
+  // LOGIN PAGE
+  if (!isAuthenticated) {
+    return (
+      <div style={{
+        display: "flex",
+        minHeight: "100vh",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+        fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+        padding: 40
+      }}>
+        <div style={{
+          background: "white",
+          borderRadius: 24,
+          padding: 48,
+          boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
+          width: "100%",
+          maxWidth: 420
+        }}>
+          <div style={{ textAlign: "center", marginBottom: 32 }}>
+            {/* Logo Login - 180x180px GEDE */}
+            <div style={{
+              width: 180,
+              height: 180,
+              margin: "0 auto 24px",
+              background: "white",
+              borderRadius: 24,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              boxShadow: "0 10px 30px rgba(16, 185, 129, 0.4)",
+              padding: 16,
+              overflow: "hidden"
+            }}>
+              {!logoError.loginLeft ? (
+                <img 
+                  src="/oppa-logo.png" 
+                  alt="OPPA Logo"
+                  style={{ 
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "contain"
+                  }}
+                  onError={() => setLogoError(prev => ({ ...prev, loginLeft: true }))}
+                />
+              ) : (
+                <div style={{ fontSize: 80 }}>🛠️</div>
+              )}
+            </div>
+            <h1 style={{
+              fontSize: 28,
+              fontWeight: 800,
+              margin: 0,
+              marginBottom: 8,
+              background: "linear-gradient(135deg, #10b981, #14b8a6)",
+              WebkitBackgroundClip: "text",
+              WebkitTextFillColor: "transparent"
+            }}>
+              OPPA Panel
+            </h1>
+            <p style={{
+              fontSize: 16,
+              color: "#64748b",
+              margin: 0,
+              fontWeight: 600,
+              marginBottom: 4
+            }}>
+              Smart Actions. Real Impact.
+            </p>
+            <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>
+              Sign in to continue
+            </p>
+          </div>
+
+          <form onSubmit={handleLogin}>
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ display: "block", marginBottom: 8, fontSize: 14, fontWeight: 600, color: "#334155" }}>
+                Username
+              </label>
+              <input
+                type="text"
+                value={username}
+                onChange={e => setUsername(e.target.value)}
+                placeholder="Enter your username"
+                style={{
+                  width: "100%",
+                  padding: 14,
+                  borderRadius: 12,
+                  border: "2px solid #e2e8f0",
+                  fontSize: 14,
+                  outline: "none",
+                  transition: "all 0.2s",
+                  boxSizing: "border-box"
+                }}
+                onFocus={(e) => e.target.style.borderColor = "#10b981"}
+                onBlur={(e) => e.target.style.borderColor = "#e2e8f0"}
+              />
+            </div>
+
+            <div style={{ marginBottom: 24 }}>
+              <label style={{ display: "block", marginBottom: 8, fontSize: 14, fontWeight: 600, color: "#334155" }}>
+                Password
+              </label>
+              <input
+                type="password"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                placeholder="Enter your password"
+                style={{
+                  width: "100%",
+                  padding: 14,
+                  borderRadius: 12,
+                  border: "2px solid #e2e8f0",
+                  fontSize: 14,
+                  outline: "none",
+                  transition: "all 0.2s",
+                  boxSizing: "border-box"
+                }}
+                onFocus={(e) => e.target.style.borderColor = "#10b981"}
+                onBlur={(e) => e.target.style.borderColor = "#e2e8f0"}
+              />
+            </div>
+
+            {loginError && (
+              <div style={{
+                padding: 12,
+                borderRadius: 10,
+                background: "#fee2e2",
+                border: "1px solid #fca5a5",
+                color: "#dc2626",
+                fontSize: 13,
+                marginBottom: 20,
+                textAlign: "center"
+              }}>
+                {loginError}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              style={{
+                width: "100%",
+                padding: 16,
+                borderRadius: 12,
+                border: "none",
+                background: "linear-gradient(135deg, #10b981, #14b8a6)",
+                color: "white",
+                fontSize: 16,
+                fontWeight: 700,
+                cursor: "pointer",
+                boxShadow: "0 4px 12px rgba(16, 185, 129, 0.4)",
+                transition: "all 0.2s"
+              }}
+              onMouseEnter={(e) => e.target.style.transform = "translateY(-2px)"}
+              onMouseLeave={(e) => e.target.style.transform = "translateY(0)"}
+            >
+              🚀 Login
+            </button>
+          </form>
+
+          <div style={{
+            marginTop: 24,
+            paddingTop: 20,
+            borderTop: "1px solid #e2e8f0"
+          }}>
+            <p style={{
+              fontSize: 11,
+              color: "#94a3b8",
+              textAlign: "center",
+              marginBottom: 12,
+              fontWeight: 600,
+              textTransform: "uppercase"
+            }}>
+              Supported Platforms
+            </p>
+            <div style={{
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              gap: 16,
+              flexWrap: "wrap"
+            }}>
+              <img 
+                src="https://cdn.simpleicons.org/tiktok/000000" 
+                alt="TikTok" 
+                width="24"
+                height="24"
+                style={{ opacity: 0.6, transition: "opacity 0.2s" }}
+                onMouseEnter={(e) => e.target.style.opacity = "1"}
+                onMouseLeave={(e) => e.target.style.opacity = "0.6"}
+              />
+              <img 
+                src="https://cdn.simpleicons.org/instagram/E4405F" 
+                alt="Instagram" 
+                width="24"
+                height="24"
+                style={{ opacity: 0.6, transition: "opacity 0.2s" }}
+                onMouseEnter={(e) => e.target.style.opacity = "1"}
+                onMouseLeave={(e) => e.target.style.opacity = "0.6"}
+              />
+              <img 
+                src="https://cdn.simpleicons.org/facebook/1877F2" 
+                alt="Facebook" 
+                width="24"
+                height="24"
+                style={{ opacity: 0.6, transition: "opacity 0.2s" }}
+                onMouseEnter={(e) => e.target.style.opacity = "1"}
+                onMouseLeave={(e) => e.target.style.opacity = "0.6"}
+              />
+              <img 
+                src="https://cdn.simpleicons.org/x/000000" 
+                alt="X" 
+                width="24"
+                height="24"
+                style={{ opacity: 0.6, transition: "opacity 0.2s" }}
+                onMouseEnter={(e) => e.target.style.opacity = "1"}
+                onMouseLeave={(e) => e.target.style.opacity = "0.6"}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // MAIN APP
+  return (
+    <div style={{
+      display: "flex",
+      minHeight: "100vh",
+      background: "#f8fafc",
+      fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    }}>
+      
+      {/* Sidebar */}
+      <div style={{
+        width: 280,
+        background: "white",
+        borderRight: "1px solid #e2e8f0",
+        padding: "24px 0",
+        position: "fixed",
+        height: "100vh",
+        overflowY: "auto",
+        boxShadow: "2px 0 10px rgba(0,0,0,0.05)"
+      }}>
+        <div style={{
+          padding: "0 24px 24px 24px",
+          borderBottom: "1px solid #e2e8f0",
+          display: "flex",
+          alignItems: "center",
+          gap: 12
+        }}>
+          {/* Logo Sidebar - 50x50px GEDE */}
+          <div style={{
+            width: 50,
+            height: 50,
+            background: "white",
+            borderRadius: 10,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+            flexShrink: 0,
+            padding: 8
+          }}>
+            {!logoError.sidebar ? (
+              <img 
+                src="/oppa-logo.png" 
+                alt="OPPA" 
+                style={{ 
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "contain"
+                }}
+                onError={() => setLogoError(prev => ({ ...prev, sidebar: true }))}
+              />
+            ) : (
+              <div style={{ fontSize: 24 }}>🛠️</div>
+            )}
+          </div>
+          <div>
+            <h2 style={{
+              fontSize: 18,
+              fontWeight: 800,
+              margin: 0,
+              background: "linear-gradient(135deg, #10b981, #14b8a6)",
+              WebkitBackgroundClip: "text",
+              WebkitTextFillColor: "transparent"
+            }}>
+              OPPA Panel
+            </h2>
+            <p style={{ fontSize: 10, color: "#64748b", margin: "2px 0 0 0" }}>
+              v2.0.0 • Smart Actions
+            </p>
+          </div>
+        </div>
+
+        <div style={{
+          padding: "16px 24px",
+          margin: "16px 16px",
+          background: "#f0fdf4",
+          borderRadius: 12,
+          border: "1px solid #bbf7d0"
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+            <div style={{
+              width: 8,
+              height: 8,
+              borderRadius: "50%",
+              background: devices.length > 0 ? "#22c55e" : "#ef4444",
+              boxShadow: `0 0 8px ${devices.length > 0 ? "#22c55e" : "#ef4444"}`
+            }} />
+            <span style={{ fontSize: 12, fontWeight: 600, color: "#16a34a" }}>
+              {devices.length > 0 ? "Online" : "Offline"}
+            </span>
+          </div>
+          <div style={{ fontSize: 11, color: "#64748b" }}>
+            {loading ? "Loading..." : `${devices.length} device${devices.length !== 1 ? 's' : ''} connected`}
+          </div>
+        </div>
+
+        <div style={{ padding: "8px 16px" }}>
+          {menuItems.map(item => (
+            <div key={item.id}>
+              <div
+                onClick={() => {
+                  if (item.type === "platform") {
+                    togglePlatform(item.id);
+                  } else {
+                    setActiveSection(item.id);
+                  }
+                }}
+                style={{
+                  padding: "12px 16px",
+                  marginBottom: 4,
+                  borderRadius: 10,
+                  cursor: "pointer",
+                  background: activeSection === item.id ? "#dcfce7" : "transparent",
+                  border: activeSection === item.id ? "1px solid #86efac" : "1px solid transparent",
+                  transition: "all 0.2s",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between"
+                }}
+                onMouseEnter={(e) => {
+                  if (activeSection !== item.id) {
+                    e.currentTarget.style.background = "#f1f5f9";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (activeSection !== item.id) {
+                    e.currentTarget.style.background = "transparent";
+                  }
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  {item.type === "platform" ? (
+                    <img 
+                      src={item.logo} 
+                      alt={item.label} 
+                      width="18"
+                      height="18"
+                      style={{ borderRadius: 4 }} 
+                    />
+                  ) : (
+                    <span style={{ fontSize: 18 }}>{item.icon}</span>
+                  )}
+                  <span style={{
+                    fontSize: 14,
+                    fontWeight: activeSection === item.id ? 600 : 400,
+                    color: activeSection === item.id ? "#16a34a" : "#334155"
+                  }}>
+                    {item.label}
+                  </span>
+                </div>
+                {item.type === "platform" && (
+                  <span style={{ fontSize: 12, color: "#94a3b8" }}>
+                    {expandedPlatforms[item.id] ? "▼" : "▶"}
+                  </span>
+                )}
+              </div>
+
+              {item.type === "platform" && expandedPlatforms[item.id] && (
+                <div style={{ marginLeft: 20, marginTop: 4, marginBottom: 8 }}>
+                  {item.submenu.map(sub => (
+                    <div
+                      key={sub.id}
+                      onClick={() => setActiveSection(sub.id)}
+                      style={{
+                        padding: "10px 16px",
+                        marginBottom: 4,
+                        borderRadius: 8,
+                        cursor: "pointer",
+                        background: activeSection === sub.id ? "#dcfce7" : "transparent",
+                        border: activeSection === sub.id ? "1px solid #86efac" : "1px solid transparent",
+                        transition: "all 0.2s",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10
+                      }}
+                      onMouseEnter={(e) => {
+                        if (activeSection !== sub.id) {
+                          e.currentTarget.style.background = "#f8fafc";
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (activeSection !== sub.id) {
+                          e.currentTarget.style.background = "transparent";
+                        }
+                      }}
+                    >
+                      <span style={{ fontSize: 16 }}>{sub.icon}</span>
+                      <span style={{
+                        fontSize: 13,
+                        fontWeight: activeSection === sub.id ? 600 : 400,
+                        color: activeSection === sub.id ? "#16a34a" : "#64748b"
+                      }}>
+                        {sub.label}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+
+          <button
+            onClick={handleLogout}
+            style={{
+              width: "100%",
+              marginTop: 16,
+              padding: "12px 16px",
+              borderRadius: 10,
+              border: "1px solid #fee2e2",
+              background: "#fee2e2",
+              color: "#dc2626",
+              fontSize: 14,
+              fontWeight: 600,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8
+            }}
+          >
+            🚪 Logout
+          </button>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div style={{
+        marginLeft: 280,
+        flex: 1,
+        padding: 40,
+        background: "#f8fafc"
+      }}>
+        
+        {/* HOME SECTION */}
+        {activeSection === "home" && (
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 20, marginBottom: 32 }}>
+              {/* Logo Home - 80x80px GEDE */}
+              <div style={{
+                width: 80,
+                height: 80,
+                background: "white",
+                borderRadius: 16,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                boxShadow: "0 6px 16px rgba(0,0,0,0.15)",
+                border: "2px solid #e2e8f0",
+                padding: 14
+              }}>
+                {!logoError.home ? (
+                  <img 
+                    src="/oppa-logo.png" 
+                    alt="OPPA" 
+                    style={{ 
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "contain"
+                    }}
+                    onError={() => setLogoError(prev => ({ ...prev, home: true }))}
+                  />
+                ) : (
+                  <div style={{ fontSize: 40 }}>🛠️</div>
+                )}
+              </div>
+              <div>
+                <h1 style={{
+                  fontSize: 36,
+                  fontWeight: 800,
+                  margin: 0,
+                  marginBottom: 4,
+                  background: "linear-gradient(135deg, #10b981, #14b8a6)",
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent"
+                }}>
+                  Welcome to OPPA Panel
+                </h1>
+                <p style={{ fontSize: 14, color: "#64748b", margin: 0 }}>
+                  Smart Actions. Real Impact. • Select a platform to get started
+                </p>
+              </div>
+            </div>
+
+            <div style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(3, 1fr)",
+              gap: 20,
+              marginBottom: 40
+            }}>
+              <div style={{
+                background: "white",
+                border: "1px solid #e2e8f0",
+                borderRadius: 16,
+                padding: 24,
+                textAlign: "center",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
+              }}>
+                <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 8, fontWeight: 600 }}>
+                  TOTAL DEVICES
+                </div>
+                <div style={{
+                  fontSize: 40,
+                  fontWeight: 700,
+                  background: "linear-gradient(135deg, #22c55e, #10b981)",
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent"
+                }}>
+                  {devices.length}
+                </div>
+              </div>
+
+              <div style={{
+                background: "white",
+                border: "1px solid #e2e8f0",
+                borderRadius: 16,
+                padding: 24,
+                textAlign: "center",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
+              }}>
+                <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 8, fontWeight: 600 }}>
+                  PLATFORMS
+                </div>
+                <div style={{
+                  fontSize: 40,
+                  fontWeight: 700,
+                  background: "linear-gradient(135deg, #3b82f6, #2563eb)",
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent"
+                }}>
+                  4
+                </div>
+              </div>
+
+              <div style={{
+                background: "white",
+                border: "1px solid #e2e8f0",
+                borderRadius: 16,
+                padding: 24,
+                textAlign: "center",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
+              }}>
+                <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 8, fontWeight: 600 }}>
+                  STATUS
+                </div>
+                <div style={{
+                  fontSize: 24,
+                  fontWeight: 700,
+                  color: devices.length > 0 ? "#22c55e" : "#ef4444",
+                  marginTop: 8
+                }}>
+                  {devices.length > 0 ? "🟢 Ready" : "🔴 Offline"}
+                </div>
+              </div>
+            </div>
+
+            <div style={{
+              background: "white",
+              border: "1px solid #e2e8f0",
+              borderRadius: 16,
+              padding: 24,
+              boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
+            }}>
+              <h3 style={{ fontSize: 18, marginBottom: 20, color: "#16a34a", fontWeight: 700 }}>
+                🚀 Available Platforms
+              </h3>
+              <div style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(2, 1fr)",
+                gap: 16
+              }}>
+                {menuItems.filter(item => item.type === "platform").map(item => (
+                  <div
+                    key={item.id}
+                    onClick={() => togglePlatform(item.id)}
+                    style={{
+                      padding: 20,
+                      background: "#f8fafc",
+                      borderRadius: 12,
+                      border: "1px solid #e2e8f0",
+                      cursor: "pointer",
+                      transition: "all 0.2s"
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.transform = "translateY(-4px)";
+                      e.currentTarget.style.background = "white";
+                      e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.1)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = "translateY(0)";
+                      e.currentTarget.style.background = "#f8fafc";
+                      e.currentTarget.style.boxShadow = "none";
+                    }}
+                  >
+                    <img 
+                      src={item.logo} 
+                      alt={item.label} 
+                      width="32"
+                      height="32"
+                      style={{ marginBottom: 12, borderRadius: 6 }} 
+                    />
+                    <div style={{ fontSize: 16, fontWeight: 600, color: "#334155", marginBottom: 8 }}>
+                      {item.label}
+                    </div>
+                    <div style={{ fontSize: 12, color: "#64748b" }}>
+                      {item.submenu.length} features available
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TIKTOK COMMENT SECTION */}
+        {activeSection === "tiktok-comment" && (
+          <div>
+            <h2 style={{ fontSize: 28, fontWeight: 700, marginBottom: 32, color: "#334155" }}>
+              🎵 TikTok Video Comment
+            </h2>
+
+            <div style={{ display: "grid", gap: 20, marginBottom: 20 }}>
+              <div style={{
+                background: "white",
+                border: "1px solid #e2e8f0",
+                borderRadius: 16,
+                padding: 24,
+                boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
+              }}>
+                <h3 style={{ fontSize: 18, marginBottom: 20, color: "#f59e0b", fontWeight: 700 }}>
+                  ⚙️ Configuration
+                </h3>
+
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ display: "block", marginBottom: 8, fontSize: 14, fontWeight: 600, color: "#334155" }}>
+                    Video URL
+                  </label>
+                  <input
+                    type="text"
+                    value={tiktokVideoUrl}
+                    onChange={(e) => setTiktokVideoUrl(e.target.value)}
+                    placeholder="https://www.tiktok.com/@username/video/123456789"
+                    style={{
+                      width: "100%",
+                      padding: 12,
+                      borderRadius: 10,
+                      border: "1px solid #e2e8f0",
+                      fontSize: 14,
+                      outline: "none",
+                      boxSizing: "border-box"
+                    }}
+                  />
+                </div>
+
+                <div style={{ marginBottom: 20 }}>
+                  <label style={{ display: "block", marginBottom: 8, fontSize: 14, fontWeight: 600, color: "#334155" }}>
+                    Comment Text
+                  </label>
+                  <textarea
+                    value={tiktokVideoComment}
+                    onChange={(e) => setTiktokVideoComment(e.target.value)}
+                    placeholder="Type your comment here..."
+                    rows={4}
+                    style={{
+                      width: "100%",
+                      padding: 12,
+                      borderRadius: 10,
+                      border: "1px solid #e2e8f0",
+                      fontSize: 14,
+                      outline: "none",
+                      resize: "vertical",
+                      fontFamily: "inherit",
+                      boxSizing: "border-box"
+                    }}
+                  />
+                </div>
+
+                <button
+                  onClick={handleTikTokComment}
+                  disabled={tiktokCommentLoading}
+                  style={{
+                    padding: "12px 24px",
+                    borderRadius: 10,
+                    border: "none",
+                    background: tiktokCommentLoading 
+                      ? "#94a3b8" 
+                      : "linear-gradient(135deg, #10b981, #14b8a6)",
+                    color: "white",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: tiktokCommentLoading ? "not-allowed" : "pointer",
+                    boxShadow: "0 2px 8px rgba(16, 185, 129, 0.3)"
+                  }}
+                >
+                  {tiktokCommentLoading ? "⏳ Processing..." : "🚀 Start Comment"}
+                </button>
+              </div>
+
+              <DeviceSelector />
+              <LogsPanel />
+            </div>
+          </div>
+        )}
+
+        {/* TIKTOK REPORT SECTION */}
+        {activeSection === "tiktok-report" && (
+          <div>
+            <h2 style={{ fontSize: 28, fontWeight: 700, marginBottom: 32, color: "#334155" }}>
+              🚨 TikTok Report
+            </h2>
+
+            <div style={{ display: "grid", gap: 20 }}>
+              <div style={{
+                background: "white",
+                border: "1px solid #e2e8f0",
+                borderRadius: 16,
+                padding: 24,
+                boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
+              }}>
+                <h3 style={{ fontSize: 18, marginBottom: 20, color: "#ef4444", fontWeight: 700 }}>
+                  ⚙️ Report Configuration
+                </h3>
+
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ display: "block", marginBottom: 8, fontSize: 14, fontWeight: 600, color: "#334155" }}>
+                    Target Username (optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={tiktokReportUsername}
+                    onChange={(e) => setTiktokReportUsername(e.target.value)}
+                    placeholder="@username"
+                    style={{
+                      width: "100%",
+                      padding: 12,
+                      borderRadius: 10,
+                      border: "1px solid #e2e8f0",
+                      fontSize: 14,
+                      outline: "none",
+                      boxSizing: "border-box"
+                    }}
+                  />
+                </div>
+
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ display: "block", marginBottom: 8, fontSize: 14, fontWeight: 600, color: "#334155" }}>
+                    Profile URL (optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={tiktokReportProfileUrl}
+                    onChange={(e) => setTiktokReportProfileUrl(e.target.value)}
+                    placeholder="https://www.tiktok.com/@username"
+                    style={{
+                      width: "100%",
+                      padding: 12,
+                      borderRadius: 10,
+                      border: "1px solid #e2e8f0",
+                      fontSize: 14,
+                      outline: "none",
+                      boxSizing: "border-box"
+                    }}
+                  />
+                </div>
+
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ display: "block", marginBottom: 8, fontSize: 14, fontWeight: 600, color: "#334155" }}>
+                    Video URL (optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={tiktokReportVideoUrl}
+                    onChange={(e) => setTiktokReportVideoUrl(e.target.value)}
+                    placeholder="https://www.tiktok.com/@username/video/123456789"
+                    style={{
+                      width: "100%",
+                      padding: 12,
+                      borderRadius: 10,
+                      border: "1px solid #e2e8f0",
+                      fontSize: 14,
+                      outline: "none",
+                      boxSizing: "border-box"
+                    }}
+                  />
+                </div>
+
+                <div style={{ marginBottom: 20 }}>
+                  <label style={{ display: "block", marginBottom: 8, fontSize: 14, fontWeight: 600, color: "#334155" }}>
+                    Report Reason
+                  </label>
+                  <select
+                    value={tiktokReportReason}
+                    onChange={(e) => setTiktokReportReason(e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: 12,
+                      borderRadius: 10,
+                      border: "1px solid #e2e8f0",
+                      fontSize: 14,
+                      outline: "none",
+                      boxSizing: "border-box"
+                    }}
+                  >
+                    <option value="dont-like">I just don't like it</option>
+                    <option value="bullying">Bullying or unwanted contact</option>
+                    <option value="suicide">Suicide, self-injury or eating disorders</option>
+                    <option value="violence">Violence, hate or exploitation</option>
+                    <option value="restricted">Selling or promoting restricted items</option>
+                    <option value="nudity">Nudity or sexual activity</option>
+                    <option value="spam">Scam, fraud or spam</option>
+              <option value="false">False information</option>
+                  </select>
+                </div>
+
+                <button
+                  onClick={handleTikTokReport}
+                  disabled={tiktokReportLoading}
+                  style={{
+                    padding: "12px 24px",
+                    borderRadius: 10,
+                    border: "none",
+                    background: tiktokReportLoading 
+                      ? "#94a3b8" 
+                      : "linear-gradient(135deg, #ef4444, #dc2626)",
+                    color: "white",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: tiktokReportLoading ? "not-allowed" : "pointer",
+                    boxShadow: "0 2px 8px rgba(239, 68, 68, 0.3)"
+                  }}
+                >
+                  {tiktokReportLoading ? "⏳ Reporting..." : "🚨 Start Report"}
+                </button>
+              </div>
+
+              <DeviceSelector />
+              <LogsPanel />
+            </div>
+          </div>
+        )}
+
+        {/* INSTAGRAM POST COMMENT SECTION */}
+        {activeSection === "ig-post" && (
+          <div>
+            <h2 style={{ fontSize: 28, fontWeight: 700, marginBottom: 32, color: "#334155" }}>
+              📸 Instagram Post Comment
+            </h2>
+
+            <div style={{ display: "grid", gap: 20 }}>
+              <div style={{
+                background: "white",
+                border: "1px solid #e2e8f0",
+                borderRadius: 16,
+                padding: 24,
+                boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
+              }}>
+                <h3 style={{ fontSize: 18, marginBottom: 20, color: "#ec4899", fontWeight: 700 }}>
+                  ⚙️ Configuration
+                </h3>
+
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ display: "block", marginBottom: 8, fontSize: 14, fontWeight: 600, color: "#334155" }}>
+                    Post URL
+                  </label>
+                  <input
+                    type="text"
+                    value={igPostUrl}
+                    onChange={(e) => setIgPostUrl(e.target.value)}
+                    placeholder="https://www.instagram.com/p/XXXXXXXXX/"
+                    style={{
+                      width: "100%",
+                      padding: 12,
+                      borderRadius: 10,
+                      border: "1px solid #e2e8f0",
+                      fontSize: 14,
+                      outline: "none",
+                      boxSizing: "border-box"
+                    }}
+                  />
+                </div>
+
+                <div style={{ marginBottom: 20 }}>
+                  <label style={{ display: "block", marginBottom: 8, fontSize: 14, fontWeight: 600, color: "#334155" }}>
+                    Comment Text
+                  </label>
+                  <textarea
+                    value={igPostComment}
+                    onChange={(e) => setIgPostComment(e.target.value)}
+                    placeholder="Type your comment here..."
+                    rows={4}
+                    style={{
+                      width: "100%",
+                      padding: 12,
+                      borderRadius: 10,
+                      border: "1px solid #e2e8f0",
+                      fontSize: 14,
+                      outline: "none",
+                      resize: "vertical",
+                      fontFamily: "inherit",
+                      boxSizing: "border-box"
+                    }}
+                  />
+                </div>
+
+                <button
+                  onClick={handleIgPostComment}
+                  disabled={igPostLoading}
+                  style={{
+                    padding: "12px 24px",
+                    borderRadius: 10,
+                    border: "none",
+                    background: igPostLoading 
+                      ? "#94a3b8" 
+                      : "linear-gradient(135deg, #ec4899, #db2777)",
+                    color: "white",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: igPostLoading ? "not-allowed" : "pointer",
+                    boxShadow: "0 2px 8px rgba(236, 72, 153, 0.3)"
+                  }}
+                >
+                  {igPostLoading ? "⏳ Processing..." : "🚀 Start Comment"}
+                </button>
+              </div>
+
+              <DeviceSelector />
+              <LogsPanel />
+            </div>
+          </div>
+        )}
+
+        {/* INSTAGRAM REELS COMMENT SECTION */}
+        {activeSection === "ig-reels" && (
+          <div>
+            <h2 style={{ fontSize: 28, fontWeight: 700, marginBottom: 32, color: "#334155" }}>
+              🎬 Instagram Reels Comment
+            </h2>
+
+            <div style={{ display: "grid", gap: 20 }}>
+              <div style={{
+                background: "white",
+                border: "1px solid #e2e8f0",
+                borderRadius: 16,
+                padding: 24,
+                boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
+              }}>
+                <h3 style={{ fontSize: 18, marginBottom: 20, color: "#f97316", fontWeight: 700 }}>
+                  ⚙️ Configuration
+                </h3>
+
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ display: "block", marginBottom: 8, fontSize: 14, fontWeight: 600, color: "#334155" }}>
+                    Reels URL
+                  </label>
+                  <input
+                    type="text"
+                    value={igReelsUrl}
+                    onChange={(e) => setIgReelsUrl(e.target.value)}
+                    placeholder="https://www.instagram.com/reel/XXXXXXXXX/"
+                    style={{
+                      width: "100%",
+                      padding: 12,
+                      borderRadius: 10,
+                      border: "1px solid #e2e8f0",
+                      fontSize: 14,
+                      outline: "none",
+                      boxSizing: "border-box"
+                    }}
+                  />
+                </div>
+
+                <div style={{ marginBottom: 20 }}>
+                  <label style={{ display: "block", marginBottom: 8, fontSize: 14, fontWeight: 600, color: "#334155" }}>
+                    Comment Text
+                  </label>
+                  <textarea
+                    value={igReelsComment}
+                    onChange={(e) => setIgReelsComment(e.target.value)}
+                    placeholder="Type your comment here..."
+                    rows={4}
+                    style={{
+                      width: "100%",
+                      padding: 12,
+                      borderRadius: 10,
+                      border: "1px solid #e2e8f0",
+                      fontSize: 14,
+                      outline: "none",
+                      resize: "vertical",
+                      fontFamily: "inherit",
+                      boxSizing: "border-box"
+                    }}
+                  />
+                </div>
+
+                <button
+                  onClick={handleIgReelsComment}
+                  disabled={igReelsLoading}
+                  style={{
+                    padding: "12px 24px",
+                    borderRadius: 10,
+                    border: "none",
+                    background: igReelsLoading 
+                      ? "#94a3b8" 
+                      : "linear-gradient(135deg, #f97316, #ea580c)",
+                    color: "white",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: igReelsLoading ? "not-allowed" : "pointer",
+                    boxShadow: "0 2px 8px rgba(249, 115, 22, 0.3)"
+                  }}
+                >
+                  {igReelsLoading ? "⏳ Processing..." : "🚀 Start Comment"}
+                </button>
+              </div>
+
+              <DeviceSelector />
+              <LogsPanel />
+            </div>
+          </div>
+        )}
+
+        {/* INSTAGRAM REPORT SECTION */}
+        {activeSection === "ig-report" && (
+          <div>
+            <h2 style={{ fontSize: 28, fontWeight: 700, marginBottom: 32, color: "#334155" }}>
+              ⚠️ Instagram Report
+            </h2>
+
+            <div style={{ display: "grid", gap: 20 }}>
+              <div style={{
+                background: "white",
+                border: "1px solid #e2e8f0",
+                borderRadius: 16,
+                padding: 24,
+                boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
+              }}>
+                <h3 style={{ fontSize: 18, marginBottom: 20, color: "#f59e0b", fontWeight: 700 }}>
+                  ⚙️ Report Configuration
+                </h3>
+
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ display: "block", marginBottom: 8, fontSize: 14, fontWeight: 600, color: "#334155" }}>
+                    Target Username (optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={igReportUsername}
+                    onChange={(e) => setIgReportUsername(e.target.value)}
+                    placeholder="@username"
+                    style={{
+                      width: "100%",
+                      padding: 12,
+                      borderRadius: 10,
+                      border: "1px solid #e2e8f0",
+                      fontSize: 14,
+                      outline: "none",
+                      boxSizing: "border-box"
+                    }}
+                  />
+                </div>
+
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ display: "block", marginBottom: 8, fontSize: 14, fontWeight: 600, color: "#334155" }}>
+                    Profile URL (optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={igReportProfileUrl}
+                    onChange={(e) => setIgReportProfileUrl(e.target.value)}
+                    placeholder="https://www.instagram.com/username/"
+                    style={{
+                      width: "100%",
+                      padding: 12,
+                      borderRadius: 10,
+                      border: "1px solid #e2e8f0",
+                      fontSize: 14,
+                      outline: "none",
+                      boxSizing: "border-box"
+                    }}
+                  />
+                </div>
+
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ display: "block", marginBottom: 8, fontSize: 14, fontWeight: 600, color: "#334155" }}>
+                    Post URL (optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={igReportPostUrl}
+                    onChange={(e) => setIgReportPostUrl(e.target.value)}
+                    placeholder="https://www.instagram.com/p/XXXXXXXXX/"
+                    style={{
+                      width: "100%",
+                      padding: 12,
+                      borderRadius: 10,
+                      border: "1px solid #e2e8f0",
+                      fontSize: 14,
+                      outline: "none",
+                      boxSizing: "border-box"
+                    }}
+                  />
+                </div>
+
+                <div style={{ marginBottom: 20 }}>
+                  <label style={{ display: "block", marginBottom: 8, fontSize: 14, fontWeight: 600, color: "#334155" }}>
+                    Report Reason
+                  </label>
+                  <select
+                    value={igReportReason}
+                    onChange={(e) => setIgReportReason(e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: 12,
+                      borderRadius: 10,
+                      border: "1px solid #e2e8f0",
+                      fontSize: 14,
+                      outline: "none",
+                      boxSizing: "border-box"
+                    }}
+                  >
+                    <option value="dont-like">I just don't like it</option>
+                    <option value="bullying">Bullying or unwanted contact</option>
+                    <option value="suicide">Suicide, self-injury or eating disorders</option>
+                    <option value="violence">Violence, hate or exploitation</option>
+                    <option value="restricted">Selling or promoting restricted items</option>
+                    <option value="nudity">Nudity or sexual activity</option>
+                    <option value="spam">Scam, fraud or spam</option>
+                    <option value="false">False information</option>
+                  </select>
+                </div>
+
+                <button
+                  onClick={handleIgReport}
+                  disabled={igReportLoading}
+                  style={{
+                    padding: "12px 24px",
+                    borderRadius: 10,
+                    border: "none",
+                    background: igReportLoading 
+                      ? "#94a3b8" 
+                      : "linear-gradient(135deg, #f59e0b, #d97706)",
+                    color: "white",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: igReportLoading ? "not-allowed" : "pointer",
+                    boxShadow: "0 2px 8px rgba(245, 158, 11, 0.3)"
+                  }}
+                >
+                  {igReportLoading ? "⏳ Reporting..." : "⚠️ Start Report"}
+                </button>
+              </div>
+
+              <DeviceSelector />
+              <LogsPanel />
+            </div>
+          </div>
+        )}
+
+        {/* FACEBOOK COMMENT SECTION */}
+        {activeSection === "fb-comment" && (
+          <div>
+            <h2 style={{ fontSize: 28, fontWeight: 700, marginBottom: 32, color: "#334155" }}>
+              💙 Facebook Comment
+            </h2>
+
+            <div style={{ display: "grid", gap: 20 }}>
+              <div style={{
+                background: "white",
+                border: "1px solid #e2e8f0",
+                borderRadius: 16,
+                padding: 24,
+                boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
+              }}>
+                <h3 style={{ fontSize: 18, marginBottom: 20, color: "#3b82f6", fontWeight: 700 }}>
+                  ⚙️ Configuration
+                </h3>
+
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ display: "block", marginBottom: 8, fontSize: 14, fontWeight: 600, color: "#334155" }}>
+                    Post URL
+                  </label>
+                  <input
+                    type="text"
+                    value={fbPostUrl}
+                    onChange={(e) => setFbPostUrl(e.target.value)}
+                    placeholder="https://www.facebook.com/..."
+                    style={{
+                      width: "100%",
+                      padding: 12,
+                      borderRadius: 10,
+                      border: "1px solid #e2e8f0",
+                      fontSize: 14,
+                      outline: "none",
+                      boxSizing: "border-box"
+                    }}
+                  />
+                </div>
+
+                <div style={{ marginBottom: 20 }}>
+                  <label style={{ display: "block", marginBottom: 8, fontSize: 14, fontWeight: 600, color: "#334155" }}>
+                    Comment Text
+                  </label>
+                  <textarea
+                    value={fbComment}
+                    onChange={(e) => setFbComment(e.target.value)}
+                    placeholder="Type your comment here..."
+                    rows={4}
+                    style={{
+                      width: "100%",
+                      padding: 12,
+                      borderRadius: 10,
+                      border: "1px solid #e2e8f0",
+                      fontSize: 14,
+                      outline: "none",
+                      resize: "vertical",
+                      fontFamily: "inherit",
+                      boxSizing: "border-box"
+                    }}
+                  />
+                </div>
+
+                <button
+                  onClick={handleFbComment}
+                  disabled={fbCommentLoading}
+                  style={{
+                    padding: "12px 24px",
+                    borderRadius: 10,
+                    border: "none",
+                    background: fbCommentLoading 
+                      ? "#94a3b8" 
+                      : "linear-gradient(135deg, #3b82f6, #2563eb)",
+                    color: "white",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: fbCommentLoading ? "not-allowed" : "pointer",
+                    boxShadow: "0 2px 8px rgba(59, 130, 246, 0.3)"
+                  }}
+                >
+                  {fbCommentLoading ? "⏳ Processing..." : "🚀 Start Comment"}
+                </button>
+              </div>
+
+              <DeviceSelector />
+              <LogsPanel />
+            </div>
+          </div>
+        )}
+
+        {/* FACEBOOK REPORT SECTION */}
+        {activeSection === "fb-report" && (
+          <div>
+            <h2 style={{ fontSize: 28, fontWeight: 700, marginBottom: 32, color: "#334155" }}>
+              🚫 Facebook Report
+            </h2>
+
+            <div style={{ display: "grid", gap: 20 }}>
+              <div style={{
+                background: "white",
+                border: "1px solid #e2e8f0",
+                borderRadius: 16,
+                padding: 24,
+                boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
+              }}>
+                <h3 style={{ fontSize: 18, marginBottom: 20, color: "#8b5cf6", fontWeight: 700 }}>
+                  ⚙️ Report Configuration
+                </h3>
+
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ display: "block", marginBottom: 8, fontSize: 14, fontWeight: 600, color: "#334155" }}>
+                    Target Username (optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={fbReportUsername}
+                    onChange={(e) => setFbReportUsername(e.target.value)}
+                    placeholder="username"
+                    style={{
+                      width: "100%",
+                      padding: 12,
+                      borderRadius: 10,
+                      border: "1px solid #e2e8f0",
+                      fontSize: 14,
+                      outline: "none",
+                      boxSizing: "border-box"
+                    }}
+                  />
+                </div>
+
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ display: "block", marginBottom: 8, fontSize: 14, fontWeight: 600, color: "#334155" }}>
+                    Profile URL (optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={fbReportProfileUrl}
+                    onChange={(e) => setFbReportProfileUrl(e.target.value)}
+                    placeholder="https://www.facebook.com/username"
+                    style={{
+                      width: "100%",
+                      padding: 12,
+                      borderRadius: 10,
+                      border: "1px solid #e2e8f0",
+                      fontSize: 14,
+                      outline: "none",
+                      boxSizing: "border-box"
+                    }}
+                  />
+                </div>
+
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ display: "block", marginBottom: 8, fontSize: 14, fontWeight: 600, color: "#334155" }}>
+                    Post URL (optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={fbReportPostUrl}
+                    onChange={(e) => setFbReportPostUrl(e.target.value)}
+                    placeholder="https://www.facebook.com/..."
+                    style={{
+                      width: "100%",
+                      padding: 12,
+                      borderRadius: 10,
+                      border: "1px solid #e2e8f0",
+                      fontSize: 14,
+                      outline: "none",
+                      boxSizing: "border-box"
+                    }}
+                  />
+                </div>
+
+                <div style={{ marginBottom: 20 }}>
+                  <label style={{ display: "block", marginBottom: 8, fontSize: 14, fontWeight: 600, color: "#334155" }}>
+                    Report Reason
+                  </label>
+                  <select
+                    value={fbReportReason}
+                    onChange={(e) => setFbReportReason(e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: 12,
+                      borderRadius: 10,
+                      border: "1px solid #e2e8f0",
+                      fontSize: 14,
+                      outline: "none",
+                      boxSizing: "border-box"
+                    }}
+                  >
+                    <option value="dont-like">I just don't like it</option>
+                    <option value="bullying">Bullying or unwanted contact</option>
+                    <option value="suicide">Suicide, self-injury or eating disorders</option>
+                    <option value="violence">Violence, hate or exploitation</option>
+                    <option value="restricted">Selling or promoting restricted items</option>
+                    <option value="nudity">Nudity or sexual activity</option>
+                    <option value="spam">Scam, fraud or spam</option>
+                    <option value="false">False information</option>
+                  </select>
+                </div>
+
+                <button
+                  onClick={handleFbReport}
+                  disabled={fbReportLoading}
+                  style={{
+                    padding: "12px 24px",
+                    borderRadius: 10,
+                    border: "none",
+                    background: fbReportLoading 
+                      ? "#94a3b8" 
+                      : "linear-gradient(135deg, #8b5cf6, #7c3aed)",
+                    color: "white",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: fbReportLoading ? "not-allowed" : "pointer",
+                    boxShadow: "0 2px 8px rgba(139, 92, 246, 0.3)"
+                  }}
+                >
+                  {fbReportLoading ? "⏳ Reporting..." : "🚫 Start Report"}
+                </button>
+              </div>
+
+              <DeviceSelector />
+              <LogsPanel />
+            </div>
+          </div>
+        )}
+
+        {/* X (TWITTER) COMMENT SECTION */}
+        {activeSection === "x-comment" && (
+          <div>
+            <h2 style={{ fontSize: 28, fontWeight: 700, marginBottom: 32, color: "#334155" }}>
+              🐦 X (Twitter) Reply
+            </h2>
+
+            <div style={{ display: "grid", gap: 20 }}>
+              <div style={{
+                background: "white",
+                border: "1px solid #e2e8f0",
+                borderRadius: 16,
+                padding: 24,
+                boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
+              }}>
+                <h3 style={{ fontSize: 18, marginBottom: 20, color: "#0891b2", fontWeight: 700 }}>
+                  ⚙️ Configuration
+                </h3>
+
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ display: "block", marginBottom: 8, fontSize: 14, fontWeight: 600, color: "#334155" }}>
+                    Tweet URL
+                  </label>
+                  <input
+                    type="text"
+                    value={xTweetUrl}
+                    onChange={(e) => setXTweetUrl(e.target.value)}
+                    placeholder="https://x.com/username/status/..."
+                    style={{
+                      width: "100%",
+                      padding: 12,
+                      borderRadius: 10,
+                      border: "1px solid #e2e8f0",
+                      fontSize: 14,
+                      outline: "none",
+                      boxSizing: "border-box"
+                    }}
+                  />
+                </div>
+
+                <div style={{ marginBottom: 20 }}>
+                  <label style={{ display: "block", marginBottom: 8, fontSize: 14, fontWeight: 600, color: "#334155" }}>
+                    Reply Text
+                  </label>
+                  <textarea
+                    value={xComment}
+                    onChange={(e) => setXComment(e.target.value)}
+                    placeholder="Type your reply here..."
+                    rows={4}
+                    style={{
+                      width: "100%",
+                      padding: 12,
+                      borderRadius: 10,
+                      border: "1px solid #e2e8f0",
+                      fontSize: 14,
+                      outline: "none",
+                      resize: "vertical",
+                      fontFamily: "inherit",
+                      boxSizing: "border-box"
+                    }}
+                  />
+                </div>
+
+                <button
+                  onClick={handleXComment}
+                  disabled={xCommentLoading}
+                  style={{
+                    padding: "12px 24px",
+                    borderRadius: 10,
+                    border: "none",
+                    background: xCommentLoading 
+                      ? "#94a3b8" 
+                      : "linear-gradient(135deg, #0891b2, #0e7490)",
+                    color: "white",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: xCommentLoading ? "not-allowed" : "pointer",
+                    boxShadow: "0 2px 8px rgba(8, 145, 178, 0.3)"
+                  }}
+                >
+                  {xCommentLoading ? "⏳ Processing..." : "🚀 Start Reply"}
+                </button>
+              </div>
+
+              <DeviceSelector />
+              <LogsPanel />
+            </div>
+          </div>
+        )}
+
+        {/* X (TWITTER) REPORT SECTION */}
+        {activeSection === "x-report" && (
+          <div>
+            <h2 style={{ fontSize: 28, fontWeight: 700, marginBottom: 32, color: "#334155" }}>
+              ⛔ X (Twitter) Report
+            </h2>
+
+            <div style={{ display: "grid", gap: 20 }}>
+              <div style={{
+                background: "white",
+                border: "1px solid #e2e8f0",
+                borderRadius: 16,
+                padding: 24,
+                boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
+              }}>
+                <h3 style={{ fontSize: 18, marginBottom: 20, color: "#dc2626", fontWeight: 700 }}>
+                  ⚙️ Report Configuration
+                </h3>
+
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ display: "block", marginBottom: 8, fontSize: 14, fontWeight: 600, color: "#334155" }}>
+                    Target Username (optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={xReportUsername}
+                    onChange={(e) => setXReportUsername(e.target.value)}
+                    placeholder="@username"
+                    style={{
+                      width: "100%",
+                      padding: 12,
+                      borderRadius: 10,
+                      border: "1px solid #e2e8f0",
+                      fontSize: 14,
+                      outline: "none",
+                      boxSizing: "border-box"
+                    }}
+                  />
+                </div>
+
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ display: "block", marginBottom: 8, fontSize: 14, fontWeight: 600, color: "#334155" }}>
+                    Profile URL (optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={xReportProfileUrl}
+                    onChange={(e) => setXReportProfileUrl(e.target.value)}
+                    placeholder="https://x.com/username"
+                    style={{
+                      width: "100%",
+                      padding: 12,
+                      borderRadius: 10,
+                      border: "1px solid #e2e8f0",
+                      fontSize: 14,
+                      outline: "none",
+                      boxSizing: "border-box"
+                    }}
+                  />
+                </div>
+
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ display: "block", marginBottom: 8, fontSize: 14, fontWeight: 600, color: "#334155" }}>
+                    Tweet URL (optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={xReportTweetUrl}
+                    onChange={(e) => setXReportTweetUrl(e.target.value)}
+                    placeholder="https://x.com/username/status/..."
+                    style={{
+                      width: "100%",
+                      padding: 12,
+                      borderRadius: 10,
+                      border: "1px solid #e2e8f0",
+                      fontSize: 14,
+                      outline: "none",
+                      boxSizing: "border-box"
+                    }}
+                  />
+                </div>
+
+                <div style={{ marginBottom: 20 }}>
+                  <label style={{ display: "block", marginBottom: 8, fontSize: 14, fontWeight: 600, color: "#334155" }}>
+                    Report Reason
+                  </label>
+                  <select
+                    value={xReportReason}
+                    onChange={(e) => setXReportReason(e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: 12,
+                      borderRadius: 10,
+                      border: "1px solid #e2e8f0",
+                      fontSize: 14,
+                      outline: "none",
+                      boxSizing: "border-box"
+                    }}
+                  >
+                    <option value="dont-like">I just don't like it</option>
+                    <option value="bullying">Bullying or unwanted contact</option>
+                    <option value="suicide">Suicide, self-injury or eating disorders</option>
+                    <option value="violence">Violence, hate or exploitation</option>
+                    <option value="restricted">Selling or promoting restricted items</option>
+                    <option value="nudity">Nudity or sexual activity</option>
+                    <option value="spam">Scam, fraud or spam</option>
+                    <option value="false">False information</option>
+                  </select>
+                </div>
+
+                <button
+                  onClick={handleXReport}
+                  disabled={xReportLoading}
+                  style={{
+                    padding: "12px 24px",
+                    borderRadius: 10,
+                    border: "none",
+                    background: xReportLoading 
+                      ? "#94a3b8" 
+                      : "linear-gradient(135deg, #dc2626, #b91c1c)",
+                    color: "white",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: xReportLoading ? "not-allowed" : "pointer",
+                    boxShadow: "0 2px 8px rgba(220, 38, 38, 0.3)"
+                  }}
+                >
+                  {xReportLoading ? "⏳ Reporting..." : "⛔ Start Report"}
+                </button>
+              </div>
+
+              <DeviceSelector />
+              <LogsPanel />
+            </div>
+          </div>
+        )}
+
+        {/* DEVICE MANAGER SECTION */}
+        {activeSection === "devices" && (
+          <div>
+            <h2 style={{ fontSize: 28, fontWeight: 700, marginBottom: 32, color: "#334155" }}>
+              📱 Device Manager
+            </h2>
+
+            <div style={{
+              background: "white",
+              border: "1px solid #e2e8f0",
+              borderRadius: 16,
+              padding: 24,
+              boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+                <h3 style={{ fontSize: 18, margin: 0, color: "#16a34a", fontWeight: 700 }}>
+                  Connected Devices ({devices.length})
+                </h3>
+                <button
+                  onClick={fetchDevices}
+                  disabled={loading}
+                  style={{
+                    padding: "8px 16px",
+                    borderRadius: 8,
+                    background: loading ? "#94a3b8" : "linear-gradient(135deg, #10b981, #14b8a6)",
+                    border: "none",
+                    color: "white",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: loading ? "not-allowed" : "pointer",
+                    boxShadow: "0 2px 6px rgba(16, 185, 129, 0.3)"
+                  }}
+                >
+                  {loading ? "⏳ Refreshing..." : "🔄 Refresh"}
+                </button>
+              </div>
+
+              {loading ? (
+                <div style={{ textAlign: "center", padding: 60, color: "#94a3b8" }}>
+                  <div style={{ fontSize: 48, marginBottom: 16 }}>⏳</div>
+                  Loading devices...
+                </div>
+              ) : devices.length === 0 ? (
+                <div style={{ textAlign: "center", padding: 60, color: "#94a3b8" }}>
+                  <div style={{ fontSize: 64, marginBottom: 16 }}>📱</div>
+                  <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>
+                    No devices connected
+                  </div>
+                  <div style={{ fontSize: 14 }}>
+                    Connect your Android devices via ADB
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: "grid", gap: 12 }}>
+                  {devices.map((device, idx) => (
+                    <div
+                      key={device.serial}
+                      style={{
+                        padding: 20,
+                        background: "#f8fafc",
+                        borderRadius: 12,
+                        border: "1px solid #e2e8f0",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center"
+                      }}
+                    >
+                      <div>
+                        <div style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 12,
+                          marginBottom: 8
+                        }}>
+                          <div style={{
+                            width: 40,
+                            height: 40,
+                            borderRadius: 8,
+                            background: "linear-gradient(135deg, #10b981, #14b8a6)",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            color: "white",
+                            fontSize: 18,
+                            fontWeight: 700
+                          }}>
+                            {idx + 1}
+                          </div>
+                          <div>
+                            <div style={{
+                              fontSize: 15,
+                              fontWeight: 600,
+                              fontFamily: "monospace",
+                              color: "#334155"
+                            }}>
+                              {device.serial}
+                            </div>
+                            <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
+                              {device.model || "Unknown Model"}
+                            </div>
+                          </div>
+                        </div>
+                        <div style={{ fontSize: 11, color: "#94a3b8", marginLeft: 52 }}>
+                          Status: <span style={{ color: "#22c55e", fontWeight: 600 }}>Online</span>
+                        </div>
+                      </div>
+                      <div style={{
+                        padding: "6px 12px",
+                        borderRadius: 6,
+                        background: "#dcfce7",
+                        border: "1px solid #86efac",
+                        color: "#16a34a",
+                        fontSize: 11,
+                        fontWeight: 600
+                      }}>
+                        Connected
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+
+        {/* DEVICE LOGS SECTION */}
+        {activeSection === "device-logs" && (
+          <div>
+            <h2 style={{ fontSize: 28, fontWeight: 700, marginBottom: 32, color: "#334155" }}>
+              📊 Device Activity Logs
+            </h2>
+
+            {devices.length === 0 ? (
+              <div style={{
+                background: "white",
+                border: "1px solid #e2e8f0",
+                borderRadius: 16,
+                padding: 60,
+                boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+                textAlign: "center"
+              }}>
+                <div style={{ fontSize: 64, marginBottom: 16, opacity: 0.5 }}>📱</div>
+                <div style={{ fontSize: 18, fontWeight: 600, color: "#64748b", marginBottom: 8 }}>
+                  No devices connected
+                </div>
+                <div style={{ fontSize: 14, color: "#94a3b8" }}>
+                  Connect devices to see their activity logs
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: "grid", gap: 20 }}>
+                {devices.map((device, idx) => {
+                  const deviceLogEntries = deviceLogs[device.serial] || [];
+                  const totalActions = deviceLogEntries.length;
+                  const successActions = deviceLogEntries.filter(log => log.type === "success").length;
+                  const errorActions = deviceLogEntries.filter(log => log.type === "error").length;
+
+                  return (
+                    <div
+                      key={device.serial}
+                      style={{
+                        background: "white",
+                        border: "1px solid #e2e8f0",
+                        borderRadius: 16,
+                        padding: 24,
+                        boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
+                      }}
+                    >
+                      {/* Device Header */}
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                          <div style={{
+                            width: 48,
+                            height: 48,
+                            borderRadius: 10,
+                            background: "linear-gradient(135deg, #10b981, #14b8a6)",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            color: "white",
+                            fontSize: 20,
+                            fontWeight: 700
+                          }}>
+                            {idx + 1}
+                          </div>
+                          <div>
+                            <div style={{
+                              fontSize: 16,
+                              fontWeight: 700,
+                              fontFamily: "monospace",
+                              color: "#334155"
+                            }}>
+                              {device.serial}
+                            </div>
+                            <div style={{ fontSize: 13, color: "#64748b", marginTop: 2 }}>
+                              {device.model || "Unknown Model"}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Stats */}
+                        <div style={{ display: "flex", gap: 16 }}>
+                          <div style={{ textAlign: "center" }}>
+                            <div style={{ fontSize: 20, fontWeight: 700, color: "#3b82f6" }}>
+                              {totalActions}
+                            </div>
+                            <div style={{ fontSize: 11, color: "#94a3b8" }}>Total</div>
+                          </div>
+                          <div style={{ textAlign: "center" }}>
+                            <div style={{ fontSize: 20, fontWeight: 700, color: "#22c55e" }}>
+                              {successActions}
+                            </div>
+                            <div style={{ fontSize: 11, color: "#94a3b8" }}>Success</div>
+                          </div>
+                          <div style={{ textAlign: "center" }}>
+                            <div style={{ fontSize: 20, fontWeight: 700, color: "#ef4444" }}>
+                              {errorActions}
+                            </div>
+                            <div style={{ fontSize: 11, color: "#94a3b8" }}>Failed</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Logs */}
+                      <div>
+                        <h4 style={{ fontSize: 14, fontWeight: 600, color: "#64748b", marginBottom: 12 }}>
+                          📝 Activity History
+                        </h4>
+                        <div style={{
+                          maxHeight: 300,
+                          overflowY: "auto",
+                          fontSize: 12,
+                          fontFamily: "monospace"
+                        }}>
+                          {deviceLogEntries.length === 0 ? (
+                            <div style={{
+                              textAlign: "center",
+                              padding: 40,
+                              color: "#94a3b8",
+                              background: "#f8fafc",
+                              borderRadius: 8
+                            }}>
+                              No activity recorded yet
+                            </div>
+                          ) : (
+                            deviceLogEntries.map((log, i) => (
+                              <div
+                                key={i}
+                                style={{
+                                  padding: "10px 14px",
+                                  marginBottom: 6,
+                                  borderRadius: 8,
+                                  background: log.type === "success"
+                                    ? "#dcfce7"
+                                    : log.type === "error"
+                                    ? "#fee2e2"
+                                    : "#dbeafe",
+                                  border: `1px solid ${log.type === "success"
+                                    ? "#86efac"
+                                    : log.type === "error"
+                                    ? "#fca5a5"
+                                    : "#93c5fd"}`,
+                                  color: log.type === "success"
+                                    ? "#16a34a"
+                                    : log.type === "error"
+                                    ? "#dc2626"
+                                    : "#2563eb"
+                                }}
+                              >
+                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                                  <span>{log.icon} {log.msg}</span>
+                                  <span style={{ fontSize: 10, opacity: 0.7 }}>{log.time}</span>
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+
+                      {/* ✅ Screenshot Gallery */}
+                      <div style={{ marginTop: 24 }}>
+                        <h4 style={{ fontSize: 14, fontWeight: 600, color: "#64748b", marginBottom: 12 }}>
+                          📸 Screenshots ({(deviceScreenshots[device.serial] || []).length})
+                        </h4>
+                        <div style={{ maxHeight: 400, overflowY: "auto" }}>
+                          {(deviceScreenshots[device.serial] || []).length === 0 ? (
+                            <div style={{ textAlign: "center", padding: 40, color: "#94a3b8", background: "#f8fafc", borderRadius: 8 }}>
+                              No screenshots captured yet
+                            </div>
+                          ) : (
+                            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12 }}>
+                              {deviceScreenshots[device.serial].map((screenshot, sIdx) => (
+                                <div
+                                  key={sIdx}
+                                  style={{ background: "#f8fafc", borderRadius: 10, border: "1px solid #e2e8f0", padding: 10, transition: "all 0.2s", cursor: "pointer" }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-4px)"; e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.1)"; }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "none"; }}
+                                >
+                                  <div style={{ width: "100%", height: 160, background: "#e2e8f0", borderRadius: 8, marginBottom: 10, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                    <img src={screenshot.url} alt={`Screenshot ${sIdx + 1}`} style={{ width: "100%", height: "100%", objectFit: "cover" }} onError={(e) => { e.target.style.display = "none"; e.target.parentElement.innerHTML = '<div style="font-size:40px;color:#94a3b8">📸</div>'; }} />
+                                  </div>
+                                  <div style={{ marginBottom: 8 }}>
+                                    <div style={{ fontSize: 11, fontWeight: 600, color: "#334155", marginBottom: 4, textTransform: "capitalize" }}>
+                                      {screenshot.actionType.replace(/-/g, ' ')}
+                                    </div>
+                                    <div style={{ fontSize: 10, color: "#94a3b8" }}>
+                                      {new Date(screenshot.timestamp).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                    </div>
+                                  </div>
+                                  <a href={screenshot.url} download={`${device.serial}_${screenshot.actionType}_${screenshot.timestamp}.png`} style={{ display: "block", padding: "8px 12px", borderRadius: 6, background: "linear-gradient(135deg, #10b981, #14b8a6)", color: "white", fontSize: 11, fontWeight: 600, textAlign: "center", textDecoration: "none", transition: "all 0.2s" }} onMouseEnter={(e) => { e.target.style.transform = "scale(1.05)"; }} onMouseLeave={(e) => { e.target.style.transform = "scale(1)"; }}>
+                                    📥 Download
+                                  </a>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
