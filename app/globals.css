@@ -1,6 +1,11 @@
 @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;500;600&display=swap');
-@import 'bootstrap/dist/css/bootstrap.min.css';
 
+/* Tailwind */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Root Variables */
 :root {
   --neon-green: #00ff9d;
   --neon-green-soft: #00ff9d55;
@@ -9,6 +14,14 @@
   --glow-green: 0 0 12px #00ff9d88, 0 0 22px #00ff9d55;
 }
 
+/* Reset */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* Body Style */
 body {
   margin: 0;
   font-family: "Fira Code", monospace;
@@ -17,24 +30,12 @@ body {
   user-select: none;
 }
 
+/* Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
 }
+
 ::-webkit-scrollbar-thumb {
   background: #0d4f37;
   border-radius: 50px;
-}
-
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
-
-body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
 }

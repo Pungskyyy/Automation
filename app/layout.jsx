@@ -1,5 +1,6 @@
 "use client";
 
+import 'bootstrap/dist/css/bootstrap.min.css';
 import "./globals.css";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
