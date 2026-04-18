@@ -1,14 +1,30 @@
-import "./globals.css";
+"use client";
 
-export const metadata = {
-    title: "ADB Dashboard",
-    description: "ADB Multi-Device Terminal",
-};
+import "./globals.css";
+import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
+import { DeviceProvider } from "./contexts/DeviceContext";
 
 export default function RootLayout({ children }) {
-return (
+  const pathname = usePathname();
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  useEffect(() => {
+    const loggedInUser = localStorage.getItem("loggedInUser");
+    setIsLoggedIn(!!loggedInUser);
+  }, [pathname]);
+
+  return (
     <html lang="en">
-      <body>{children}</body>
+      <head>
+        <title>OPA Automation - Multi-Device Control</title>
+        <meta name="description" content="Automation tool for social media" />
+      </head>
+      <body className="bg-gray-900">
+        <DeviceProvider>
+          {children}
+        </DeviceProvider>
+      </body>
     </html>
   );
 }

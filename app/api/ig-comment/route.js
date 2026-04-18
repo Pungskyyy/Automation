@@ -1,284 +1,392 @@
-import { NextResponse } from "next/server";
 import { exec } from "child_process";
-import fs from "fs";
-import util from "util";
-import path from "path";
+import { promisify } from "util";
+import { humanLikeTyping } from "../human-typing-helper.js";
 
-const run = util.promisify(exec);
+const execAsync = promisify(exec);
 
-const FALLBACK = {
-  post: {
-    comment: { x: 250, y: 1965 },
-    input: { x: 500, y: 1145 },
-    send: { x: 920, y: 1145 },
-  },
-  reels: {
-    comment: { x: 1000, y: 1120 },
-    input: { x: 500, y: 1950 },
-    send: { x: 1000, y: 1950 },
-  },
+// DELAYS - diperpanjang untuk lebih stabil
+const DELAYS = {
+  afterOpenPost: 8000,      // Tunggu post load
+  afterOpenReels: 10000,    // Reels butuh waktu lebih lama
+  afterCommentClick: 3500,  // Tunggu comment panel muncul
+  beforeTyping: 2500,       // Tunggu keyboard + input fokus
+  afterTyping: 3000,        // Tunggu text tersimpan
+  beforePost: 2000,         // Delay sebelum klik post
+  afterPost: 4000,          // Tunggu comment terposting
+  betweenDevices: 5000,     // Delay antar device
 };
-
-const IG_IDS = {
-  // Instagram Post (Feed)
-  commentButton: "com.instagram.android:id/row_feed_button_comment",
-  inputField: "com.instagram.android:id/layout_comment_thread_edittext",
-  postButton: "com.instagram.android:id/layout_comment_thread_post_button_icon",
-  
-  // Instagram Reels
-  reelsCommentButton: "com.instagram.android:id/comment_button",
-  reelsInputField: "com.instagram.android:id/comment_composer_text_view",
-  reelsPostButton: "com.instagram.android:id/layout_comment_thread_post_button",
-};
-
-export async function POST(req) {
-  console.log("\n═══════════════════════════════════════════");
-  console.log("   IG COMMENT API - START");
-  console.log("═══════════════════════════════════════════\n");
-
-  // Temp file paths
-  const tmpDir = process.cwd();
-  const xml1Path = path.join(tmpDir, "ig1.xml");
-  const xml2Path = path.join(tmpDir, "ig2.xml");
-
-  try {
-    const body = await req.json();
-    const { comment, postUrl, serial, type } = body;
-
-    console.log("📝 Request Data:");
-    console.log("   Comment:", comment);
-    console.log("   Post URL:", postUrl);
-    console.log("   Serial:", serial);
-    console.log("   Type:", type || "post");
-
-    // Validation
-    if (!comment || comment.trim() === "") {
-      console.error("❌ Comment kosong");
-      return NextResponse.json({ error: "Comment harus diisi" }, { status: 400 });
-    }
-
-    if (!postUrl || postUrl.trim() === "") {
-      console.error("❌ Post URL kosong");
-      return NextResponse.json({ error: "Post URL harus diisi" }, { status: 400 });
-    }
-
-    if (!serial || serial.trim() === "") {
-      console.error("❌ Device serial kosong");
-      return NextResponse.json({ error: "Device serial harus diisi" }, { status: 400 });
-    }
-
-    const prefix = `adb -s ${serial}`;
-    const isReels = type === "reels";
-    const FB = isReels ? FALLBACK.reels : FALLBACK.post;
-    const IDS = isReels
-      ? {
-          commentButton: IG_IDS.reelsCommentButton,
-          inputField: IG_IDS.reelsInputField,
-          postButton: IG_IDS.reelsPostButton,
-        }
-      : {
-          commentButton: IG_IDS.commentButton,
-          inputField: IG_IDS.inputField,
-          postButton: IG_IDS.postButton,
-        };
-
-    console.log(`\n🔧 Mode: ${isReels ? "REELS" : "POST"}`);
-
-    // Check device
-    console.log("\n1️⃣ Checking device...");
-    try {
-      const { stdout: devices } = await run("adb devices");
-      console.log("   Connected devices:", devices.trim());
-      
-      if (!devices.includes(serial)) {
-        throw new Error(`Device ${serial} tidak ditemukan`);
-      }
-
-      const { stdout: state } = await run(`adb -s ${serial} get-state`);
-      if (state.trim() !== "device") {
-        throw new Error(`Device tidak ready: ${state.trim()}`);
-      }
-      
-      console.log("   ✅ Device ready");
-    } catch (err) {
-      console.error("   ❌ Device check failed:", err.message);
-      return NextResponse.json({ 
-        error: `Device error: ${err.message}`,
-        needReconnect: true 
-      }, { status: 400 });
-    }
-
-    // Force stop Instagram
-    console.log("\n2️⃣ Force stopping Instagram...");
-    await run(`${prefix} shell am force-stop com.instagram.android`);
-    await delay(1000);
-    console.log("   ✅ Instagram stopped");
-
-    // Open URL
-    console.log("\n3️⃣ Opening Instagram URL...");
-    await run(`${prefix} shell am start -a android.intent.action.VIEW -d "${postUrl}"`);
-    console.log("   ✅ URL opened");
-    await delay(5000);
-
-    // UI Dump 1 - Find comment button
-    console.log("\n4️⃣ Finding comment button...");
-    await run(`${prefix} shell uiautomator dump /sdcard/ig1.xml`);
-    await run(`${prefix} pull /sdcard/ig1.xml ${xml1Path}`);
-    
-    let commentTap = FB.comment;
-    if (fs.existsSync(xml1Path)) {
-      const xml1 = fs.readFileSync(xml1Path, "utf8");
-      const commentNode = findNode(xml1, [IDS.commentButton]);
-      
-      if (commentNode?.bounds) {
-        commentTap = getCenter(commentNode.bounds);
-        console.log(`   ✅ Found at (${Math.round(commentTap.x)}, ${Math.round(commentTap.y)})`);
-      } else {
-        console.log(`   ⚠️ Using fallback (${commentTap.x}, ${commentTap.y})`);
-      }
-    }
-
-    // Tap comment button
-    console.log("\n5️⃣ Tapping comment button...");
-    await run(`${prefix} shell input tap ${Math.round(commentTap.x)} ${Math.round(commentTap.y)}`);
-    await delay(3000);
-    console.log("   ✅ Comment button tapped");
-
-    // UI Dump 2 - Find input field
-    console.log("\n6️⃣ Finding input field & send button...");
-    await run(`${prefix} shell uiautomator dump /sdcard/ig2.xml`);
-    await run(`${prefix} pull /sdcard/ig2.xml ${xml2Path}`);
-    
-    let inputTap = FB.input;
-    let sendTap = FB.send;
-    
-    if (fs.existsSync(xml2Path)) {
-      const xml2 = fs.readFileSync(xml2Path, "utf8");
-      
-      const inputNode = findNode(xml2, [IDS.inputField]);
-      if (inputNode?.bounds) {
-        inputTap = getCenter(inputNode.bounds);
-        console.log(`   ✅ Input found at (${Math.round(inputTap.x)}, ${Math.round(inputTap.y)})`);
-      } else {
-        console.log(`   ⚠️ Using fallback input (${inputTap.x}, ${inputTap.y})`);
-      }
-      
-      const sendNode = findNode(xml2, [IDS.postButton]);
-      if (sendNode?.bounds) {
-        sendTap = getCenter(sendNode.bounds);
-        console.log(`   ✅ Send found at (${Math.round(sendTap.x)}, ${Math.round(sendTap.y)})`);
-      } else {
-        console.log(`   ⚠️ Using fallback send (${sendTap.x}, ${sendTap.y})`);
-      }
-    }
-
-    // Tap input field
-    console.log("\n7️⃣ Tapping input field...");
-    await run(`${prefix} shell input tap ${Math.round(inputTap.x)} ${Math.round(inputTap.y)}`);
-    await delay(1500);
-    console.log("   ✅ Input field tapped");
-
-    // Clear input
-    console.log("\n8️⃣ Clearing input...");
-    await run(`${prefix} shell input keyevent KEYCODE_MOVE_END`);
-    for (let i = 0; i < 50; i++) {
-      await run(`${prefix} shell input keyevent KEYCODE_DEL`);
-    }
-    await delay(500);
-    console.log("   ✅ Input cleared");
-
-    // Type comment
-    console.log("\n9️⃣ Typing comment...");
-    const escapedComment = comment.replace(/ /g, "%s");
-    await run(`${prefix} shell input text "${escapedComment}"`);
-    await delay(1500);
-    console.log("   ✅ Comment typed");
-
-    // Tap send button
-    console.log("\n🔟 Tapping send button...");
-    await run(`${prefix} shell input tap ${Math.round(sendTap.x)} ${Math.round(sendTap.y)}`);
-    await delay(2500);
-    console.log("   ✅ Send button tapped");
-
-    // Close keyboard
-    await run(`${prefix} shell input keyevent KEYCODE_BACK`);
-    await delay(500);
-
-    // Cleanup
-    try {
-      if (fs.existsSync(xml1Path)) fs.unlinkSync(xml1Path);
-      if (fs.existsSync(xml2Path)) fs.unlinkSync(xml2Path);
-    } catch (cleanupErr) {
-      console.error("⚠️ Cleanup error:", cleanupErr.message);
-    }
-
-    console.log("\n═══════════════════════════════════════════");
-    console.log("   ✅ COMMENT SENT SUCCESSFULLY");
-    console.log("═══════════════════════════════════════════\n");
-
-    return NextResponse.json({
-      success: true,
-      message: "Instagram comment berhasil dikirim",
-      serial,
-      postUrl,
-      type: isReels ? "reels" : "post",
-      coordinates: {
-        commentButton: commentTap,
-        inputField: inputTap,
-        sendButton: sendTap
-      }
-    });
-
-  } catch (err) {
-    console.error("\n❌ ERROR:", err.message);
-    console.error("Stack:", err.stack);
-    
-    // Cleanup on error
-    try {
-      if (fs.existsSync(xml1Path)) fs.unlinkSync(xml1Path);
-      if (fs.existsSync(xml2Path)) fs.unlinkSync(xml2Path);
-    } catch (cleanupErr) {
-      console.error("⚠️ Cleanup error:", cleanupErr.message);
-    }
-
-    return NextResponse.json({ 
-      error: err.message || "Unknown error occurred",
-      details: err.stack
-    }, { status: 500 });
-  }
-}
-
-/* UTILITY FUNCTIONS */
 
 function delay(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-function getCenter(bounds) {
-  const nums = bounds.match(/\d+/g).map(Number);
-  return { 
-    x: Math.round((nums[0] + nums[2]) / 2), 
-    y: Math.round((nums[1] + nums[3]) / 2) 
-  };
+async function adbShell(serial, command) {
+  try {
+    const { stdout } = await execAsync(`adb -s ${serial} shell "${command}"`);
+    return stdout.trim();
+  } catch (error) {
+    console.error(`ADB Error on ${serial}:`, error.message);
+    return "";
+  }
 }
 
-function findNode(xml, keys) {
-  if (!xml) return null;
+async function findElementBounds(serial, resourceId) {
+  try {
+    await adbShell(serial, "uiautomator dump /sdcard/window_dump.xml");
+    await delay(500);
 
-  const nodeRegex = /<node(.*?)\/>/g;
-  let match;
+    const dumpContent = await adbShell(serial, `cat /sdcard/window_dump.xml`);
+    const regex = new RegExp(`resource-id="${resourceId}"[^>]*bounds="\\[([0-9]+),([0-9]+)\\]\\[([0-9]+),([0-9]+)\\]"`);
+    const match = dumpContent.match(regex);
 
-  while ((match = nodeRegex.exec(xml)) !== null) {
-    const nodeContent = match[1].toLowerCase();
-    
-    if (keys.some(key => nodeContent.includes(key.toLowerCase()))) {
-      const boundsMatch = nodeContent.match(/bounds="(.*?)"/);
-      return { 
-        raw: match[1], 
-        bounds: boundsMatch ? boundsMatch[1] : null 
-      };
+    if (match) {
+      const [, x1, y1, x2, y2] = match.map(Number);
+      const centerX = Math.floor((x1 + x2) / 2);
+      const centerY = Math.floor((y1 + y2) / 2);
+      console.log(`✅ Found ${resourceId} at [${centerX}, ${centerY}]`);
+      return { x: centerX, y: centerY };
+    }
+
+    return null;
+  } catch (error) {
+    console.error(`Error finding element:`, error.message);
+    return null;
+  }
+}
+
+async function findElementByText(serial, text) {
+  try {
+    await adbShell(serial, "uiautomator dump /sdcard/window_dump.xml");
+    await delay(500);
+
+    const dumpContent = await adbShell(serial, `cat /sdcard/window_dump.xml`);
+    const regex = new RegExp(`text="${text}"[^>]*bounds="\\[([0-9]+),([0-9]+)\\]\\[([0-9]+),([0-9]+)\\]"`);
+    const match = dumpContent.match(regex);
+
+    if (match) {
+      const [, x1, y1, x2, y2] = match.map(Number);
+      const centerX = Math.floor((x1 + x2) / 2);
+      const centerY = Math.floor((y1 + y2) / 2);
+      console.log(`✅ Found text "${text}" at [${centerX}, ${centerY}]`);
+      return { x: centerX, y: centerY };
+    }
+
+    return null;
+  } catch (error) {
+    console.error(`Error finding text:`, error.message);
+    return null;
+  }
+}
+
+async function findElementByContentDesc(serial, contentDesc) {
+  try {
+    await adbShell(serial, "uiautomator dump /sdcard/window_dump.xml");
+    await delay(500);
+
+    const dumpContent = await adbShell(serial, `cat /sdcard/window_dump.xml`);
+    const regex = new RegExp(`content-desc="${contentDesc}"[^>]*bounds="\\[([0-9]+),([0-9]+)\\]\\[([0-9]+),([0-9]+)\\]"`);
+    const match = dumpContent.match(regex);
+
+    if (match) {
+      const [, x1, y1, x2, y2] = match.map(Number);
+      const centerX = Math.floor((x1 + x2) / 2);
+      const centerY = Math.floor((y1 + y2) / 2);
+      console.log(`✅ Found content-desc "${contentDesc}" at [${centerX}, ${centerY}]`);
+      return { x: centerX, y: centerY };
+    }
+
+    return null;
+  } catch (error) {
+    console.error(`Error finding content-desc:`, error.message);
+    return null;
+  }
+}
+
+// Helper: Mencoba multiple resource IDs untuk post button
+async function findPostButton(serial) {
+  const postButtonIds = [
+    "com.instagram.android:id/layout_comment_thread_post_button_click_area",
+    "com.instagram.android:id/layout_comment_thread_post_button",
+    "com.instagram.android:id/layout_comment_thread_post_button_icon",
+    "com.instagram.android:id/row_thread_composer_button_send",
+  ];
+
+  for (const id of postButtonIds) {
+    const coords = await findElementBounds(serial, id);
+    if (coords) {
+      console.log(`✅ Found post button with ID: ${id}`);
+      return coords;
     }
   }
-  
+
   return null;
+}
+
+async function commentOnInstagramPost(serial, postUrl, comment) {
+  try {
+    console.log(`\n📸 [${serial}] ========== INSTAGRAM POST ==========`);
+    console.log(`[${serial}] Opening: ${postUrl}`);
+    
+    // 1. Open Instagram post URL
+    await adbShell(serial, `am start -a android.intent.action.VIEW -d "${postUrl}"`);
+    await delay(DELAYS.afterOpenPost);
+
+    // 2. Tap comment button - MULTIPLE METHODS
+    console.log(`[${serial}] Finding comment button...`);
+    
+    let coords = await findElementBounds(serial, "com.instagram.android:id/row_feed_button_comment");
+    
+    if (!coords) {
+      console.log(`[${serial}] Trying content-desc...`);
+      coords = await findElementByContentDesc(serial, "Comment");
+    }
+    
+    if (!coords) {
+      console.log(`[${serial}] Trying text search...`);
+      coords = await findElementByText(serial, "Comment");
+    }
+    
+    if (!coords) {
+      console.log(`[${serial}] Using fallback coordinates...`);
+      coords = { x: 200, y: 1850 };
+    }
+    
+    console.log(`[${serial}] Tapping comment button at [${coords.x}, ${coords.y}]`);
+    await adbShell(serial, `input tap ${coords.x} ${coords.y}`);
+    await delay(DELAYS.afterCommentClick);
+
+    // 3. Tap comment input field
+    console.log(`[${serial}] Finding input field...`);
+    
+    coords = await findElementBounds(serial, "com.instagram.android:id/layout_comment_thread_edittext");
+    
+    if (!coords) {
+      coords = await findElementBounds(serial, "com.instagram.android:id/comment_composer_text_view");
+    }
+    
+    if (!coords) {
+      coords = await findElementByText(serial, "Add a comment");
+    }
+    
+    if (!coords) {
+      console.log(`[${serial}] Using fallback input coordinates...`);
+      coords = { x: 540, y: 1900 };
+    }
+    
+    console.log(`[${serial}] Tapping input at [${coords.x}, ${coords.y}]`);
+    await adbShell(serial, `input tap ${coords.x} ${coords.y}`);
+    await delay(DELAYS.beforeTyping);
+
+    // 4. Type comment - HUMAN-LIKE TYPING
+    console.log(`[${serial}] Typing like human: "${comment}"`);
+    await humanLikeTyping(serial, comment, adbShell, delay);
+
+
+    // 5. Post comment - ROBUST METHOD
+    console.log(`[${serial}] Finding post button...`);
+    await delay(DELAYS.beforePost);
+    
+    coords = await findPostButton(serial);
+    
+    if (!coords) {
+      console.log(`[${serial}] Trying text "Post"...`);
+      coords = await findElementByText(serial, "Post");
+    }
+    
+    if (!coords) {
+      console.log(`[${serial}] Trying text "Kirim"...`);
+      coords = await findElementByText(serial, "Kirim");
+    }
+    
+    if (!coords) {
+      console.log(`[${serial}] Trying content-desc "Post"...`);
+      coords = await findElementByContentDesc(serial, "Post");
+    }
+    
+    if (coords) {
+      console.log(`[${serial}] Tapping post button at [${coords.x}, ${coords.y}]`);
+      await adbShell(serial, `input tap ${coords.x} ${coords.y}`);
+    } else {
+      console.log(`[${serial}] Using ENTER key as fallback...`);
+      await adbShell(serial, `input keyevent 66`);
+    }
+    
+    await delay(DELAYS.afterPost);
+
+    console.log(`✅ [${serial}] Comment posted successfully!`);
+    return { success: true };
+
+  } catch (error) {
+    console.error(`❌ [${serial}] Error:`, error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+async function commentOnInstagramReels(serial, reelsUrl, comment) {
+  try {
+    console.log(`\n🎬 [${serial}] ========== INSTAGRAM REELS ==========`);
+    console.log(`[${serial}] Opening: ${reelsUrl}`);
+    
+    // 1. Open Instagram reels URL
+    await adbShell(serial, `am start -a android.intent.action.VIEW -d "${reelsUrl}"`);
+    await delay(DELAYS.afterOpenReels);
+
+    // 2. Tap comment button
+    console.log(`[${serial}] Finding comment button...`);
+    
+    let coords = await findElementBounds(serial, "com.instagram.android:id/comment_button");
+    
+    if (!coords) {
+      coords = await findElementBounds(serial, "com.instagram.android:id/clips_comment_button");
+    }
+    
+    if (!coords) {
+      console.log(`[${serial}] Trying content-desc...`);
+      coords = await findElementByContentDesc(serial, "Comment");
+    }
+    
+    if (!coords) {
+      console.log(`[${serial}] Using fallback (right side)...`);
+      coords = { x: 998, y: 189 };  // From XML: [937,128][1058,249]
+    }
+    
+    console.log(`[${serial}] Tapping comment button at [${coords.x}, ${coords.y}]`);
+    await adbShell(serial, `input tap ${coords.x} ${coords.y}`);
+    await delay(DELAYS.afterCommentClick);
+
+    // 3. Tap input field
+    console.log(`[${serial}] Finding input field...`);
+    
+    coords = await findElementBounds(serial, "com.instagram.android:id/comment_composer_text_view");
+    
+    if (!coords) {
+      coords = await findElementBounds(serial, "com.instagram.android:id/layout_comment_thread_edittext");
+    }
+    
+    if (!coords) {
+      coords = await findElementByText(serial, "Add a comment");
+    }
+    
+    if (!coords) {
+      console.log(`[${serial}] Using fallback input coordinates...`);
+      coords = { x: 529, y: 1139 };  // From XML: [154,1083][903,1194]
+    }
+    
+    console.log(`[${serial}] Tapping input at [${coords.x}, ${coords.y}]`);
+    await adbShell(serial, `input tap ${coords.x} ${coords.y}`);
+    await delay(DELAYS.beforeTyping);
+
+    // 4. Type comment - HUMAN-LIKE TYPING
+    console.log(`[${serial}] Typing like human: "${comment}"`);
+    await humanLikeTyping(serial, comment, adbShell, delay);
+
+
+    // 5. Post comment
+    console.log(`[${serial}] Finding post button...`);
+    await delay(DELAYS.beforePost);
+    
+    coords = await findPostButton(serial);
+    
+    if (!coords) {
+      console.log(`[${serial}] Trying text "Post"...`);
+      coords = await findElementByText(serial, "Post");
+    }
+    
+    if (!coords) {
+      console.log(`[${serial}] Trying text "Kirim"...`);
+      coords = await findElementByText(serial, "Kirim");
+    }
+    
+    if (!coords) {
+      console.log(`[${serial}] Trying content-desc "Post"...`);
+      coords = await findElementByContentDesc(serial, "Post");
+    }
+    
+    if (coords) {
+      console.log(`[${serial}] Tapping post button at [${coords.x}, ${coords.y}]`);
+      await adbShell(serial, `input tap ${coords.x} ${coords.y}`);
+    } else {
+      console.log(`[${serial}] Using EXACT fallback coordinates from XML...`);
+      await adbShell(serial, `input tap 967 1139`);
+    }
+    
+    await delay(DELAYS.afterPost);
+
+    console.log(`✅ [${serial}] Comment posted successfully!`);
+    return { success: true };
+
+  } catch (error) {
+    console.error(`❌ [${serial}] Error:`, error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function POST(request) {
+  try {
+    const { postUrl, comment, serials } = await request.json();
+
+    console.log("\n📥 ========== NEW REQUEST ==========");
+    console.log("URL:", postUrl);
+    console.log("Comment:", comment);
+    console.log("Devices:", serials);
+
+    if (!postUrl || !comment) {
+      return Response.json(
+        { success: false, error: "Post URL dan Comment required" },
+        { status: 400 }
+      );
+    }
+
+    if (!serials || serials.length === 0) {
+      return Response.json(
+        { success: false, error: "Minimal 1 device harus dipilih" },
+        { status: 400 }
+      );
+    }
+
+    const isReels = postUrl.includes("/reel/");
+    console.log(`🔍 Type: ${isReels ? "REELS" : "POST"}\n`);
+
+    const results = [];
+    let successCount = 0;
+
+    for (const serial of serials) {
+      let result;
+      
+      if (isReels) {
+        result = await commentOnInstagramReels(serial, postUrl, comment);
+      } else {
+        result = await commentOnInstagramPost(serial, postUrl, comment);
+      }
+
+      results.push({ serial, ...result });
+
+      if (result.success) {
+        successCount++;
+      }
+      
+      if (serials.indexOf(serial) < serials.length - 1) {
+        console.log(`\n⏳ Waiting ${DELAYS.betweenDevices/1000} seconds before next device...\n`);
+        await delay(DELAYS.betweenDevices);
+      }
+    }
+
+    console.log(`\n========== SUMMARY ==========`);
+    console.log(`✅ Success: ${successCount}/${serials.length}`);
+    console.log(`❌ Failed: ${serials.length - successCount}/${serials.length}\n`);
+
+    return Response.json({
+      success: true,
+      total: serials.length,
+      successCount,
+      results
+    });
+
+  } catch (error) {
+    console.error("❌ API Error:", error.message);
+    return Response.json(
+      { success: false, error: error.message },
+      { status: 500 }
+    );
+  }
 }

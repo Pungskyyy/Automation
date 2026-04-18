@@ -1,211 +1,180 @@
 import { NextResponse } from "next/server";
 import { exec } from "child_process";
+import { humanLikeTyping } from "../human-typing-helper.js";
 import util from "util";
 
 const execAsync = util.promisify(exec);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Helper: Get bounds dari resource-id
-async function getBoundsFromResourceId(serial, resourceId) {
+const DELAYS = {
+  afterOpenLink: 7000,        // Tunggu video load dengan baik
+  afterCommentClick: 3500,    // Tunggu panel comment muncul sempurna
+  beforeTyping: 2000,         // Tunggu keyboard muncul + input field fokus
+  afterTyping: 2500,          // Tunggu text tersimpan + post button muncul
+  beforePostClick: 1000,      // Delay sebelum klik post
+  afterPostClick: 3000,       // Tunggu comment terkirim
+  beforeClose: 1500,          // Tunggu sebelum close
+};
+
+// Helper: ADB shell command
+async function adbShell(serial, command) {
   try {
-    await execAsync(`adb -s ${serial} shell uiautomator dump /sdcard/window_dump.xml`);
-    const { stdout } = await execAsync(`adb -s ${serial} shell cat /sdcard/window_dump.xml`);
-    
-    const pattern = new RegExp(`resource-id="${resourceId}"[^>]*bounds="\\[(\\d+),(\\d+)\\]\\[(\\d+),(\\d+)\\]"`);
-    const match = stdout.match(pattern);
-    
-    if (match) {
-      const x1 = parseInt(match[1]);
-      const y1 = parseInt(match[2]);
-      const x2 = parseInt(match[3]);
-      const y2 = parseInt(match[4]);
-      const centerX = Math.floor((x1 + x2) / 2);
-      const centerY = Math.floor((y1 + y2) / 2);
-      
-      console.log(`[${serial}] Found ${resourceId}: (${centerX}, ${centerY})`);
-      return { x: centerX, y: centerY, found: true };
-    }
-    
-    return { x: 0, y: 0, found: false };
-  } catch (err) {
-    console.error(`[${serial}] Error getting bounds:`, err.message);
-    return { x: 0, y: 0, found: false };
+    const { stdout } = await execAsync(`adb -s ${serial} shell ${command}`);
+    return stdout.trim();
+  } catch (error) {
+    console.error(`ADB Error [${serial}]:`, error.message);
+    return "";
   }
 }
 
-// TikTok Video Comment dengan AUTO-DETECT
-async function tiktokVideoComment(serial, comment, videoUrl, customCoords) {
-  console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-  console.log(`[${serial}] 🎵 TikTok VIDEO Comment`);
-  console.log(`[${serial}] URL: ${videoUrl}`);
-  console.log(`[${serial}] Comment: ${comment}`);
-  console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
-
-  try {
-    // 1. Open TikTok video
-    console.log(`[${serial}] Step 1: Opening TikTok video...`);
-    await execAsync(`adb -s ${serial} shell am start -a android.intent.action.VIEW -d "${videoUrl}"`);
-    await sleep(5000);
-
-    // 2. Auto-detect comment icon (dt5)
-    console.log(`\n[${serial}] Step 2: Looking for comment icon...`);
-    let commentIcon = await getBoundsFromResourceId(serial, "com.ss.android.ugc.trill:id/dt5");
-    
-    if (!commentIcon.found && customCoords?.commentButton) {
-      console.log(`[${serial}] Using custom coords for comment icon`);
-      commentIcon = customCoords.commentButton;
-    } else if (!commentIcon.found) {
-      throw new Error("Comment icon not found!");
-    }
-    
-    console.log(`[${serial}] Tapping comment icon at (${commentIcon.x}, ${commentIcon.y})`);
-    await execAsync(`adb -s ${serial} shell input tap ${commentIcon.x} ${commentIcon.y}`);
-    await sleep(2000);
-
-    // 3. Auto-detect input field (dow)
-    console.log(`\n[${serial}] Step 3: Looking for input field...`);
-    let inputField = await getBoundsFromResourceId(serial, "com.ss.android.ugc.trill:id/dow");
-    
-    if (!inputField.found && customCoords?.inputField) {
-      console.log(`[${serial}] Using custom coords for input field`);
-      inputField = customCoords.inputField;
-    } else if (!inputField.found) {
-      throw new Error("Input field not found!");
-    }
-    
-    console.log(`[${serial}] Tapping input field at (${inputField.x}, ${inputField.y})`);
-    await execAsync(`adb -s ${serial} shell input tap ${inputField.x} ${inputField.y}`);
-    await sleep(1500);
-
-    // 4. Type comment
-    console.log(`\n[${serial}] Step 4: Typing comment...`);
-    const escapedComment = comment.replace(/ /g, "%s");
-    await execAsync(`adb -s ${serial} shell input text "${escapedComment}"`);
-    await sleep(1500);
-
-    // 5. Auto-detect post button (jcv)
-    console.log(`\n[${serial}] Step 5: Looking for post button...`);
-    let postBtn = await getBoundsFromResourceId(serial, "com.ss.android.ugc.trill:id/jcv");
-    
-    if (!postBtn.found && customCoords?.sendButton) {
-      console.log(`[${serial}] Using custom coords for post button`);
-      postBtn = customCoords.sendButton;
-    } else if (!postBtn.found) {
-      throw new Error("Post button not found!");
-    }
-    
-    console.log(`[${serial}] Tapping post button at (${postBtn.x}, ${postBtn.y})`);
-    await execAsync(`adb -s ${serial} shell input tap ${postBtn.x} ${postBtn.y}`);
-    await sleep(2000);
-
-    // 6. Close comment section
-    console.log(`\n[${serial}] Step 6: Closing comment section...`);
-    await execAsync(`adb -s ${serial} shell input keyevent 4`);
-    await sleep(1000);
-
-    console.log(`\n[${serial}] ✅ SUCCESS!`);
-    console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
-
-  } catch (err) {
-    console.error(`\n❌ [${serial}] ERROR:`, err.message);
-    throw err;
+// Helper: Find element by resource-id
+async function findElementById(serial, resourceId) {
+  await adbShell(serial, `uiautomator dump /sdcard/ui.xml`);
+  await sleep(500);
+  const xml = await adbShell(serial, `cat /sdcard/ui.xml`);
+  
+  const regex = new RegExp(`resource-id="${resourceId}"[^>]*bounds="\\[([0-9]+),([0-9]+)\\]\\[([0-9]+),([0-9]+)\\]"`);
+  const match = xml.match(regex);
+  
+  if (match) {
+    const [, x1, y1, x2, y2] = match.map(Number);
+    return {
+      x: Math.floor((x1 + x2) / 2),
+      y: Math.floor((y1 + y2) / 2)
+    };
   }
+  return null;
+}
+
+
+// Helper: Try multiple resource IDs for post button
+async function findPostButton(serial) {
+  const postButtonIds = [
+    "com.ss.android.ugc.trill:id/ckm",  // Post button (main)
+    "com.ss.android.ugc.trill:id/k09",  // Alternative post button
+  ];
+  
+  for (const id of postButtonIds) {
+    const btn = await findElementById(serial, id);
+    if (btn) {
+      console.log(`[${serial}] ✅ Found post button with ID: ${id}`);
+      return btn;
+    }
+  }
+  
+  console.log(`[${serial}] ⚠️ Post button not found, using fallback coordinates`);
+  return null;
+}
+
+// TIKTOK COMMENT - FIXED with NEW resource IDs
+async function tiktokComment(serial, comment, url) {
+  console.log(`[${serial}] ========== TikTok Comment ==========`);
+
+  // 1. Open URL
+  console.log(`[${serial}] Opening: ${url}`);
+  await adbShell(serial, `am start -a android.intent.action.VIEW -d "${url}"`);
+  await sleep(DELAYS.afterOpenLink);
+
+  // 2. Check if comment panel is already open
+  console.log(`[${serial}] Checking UI state...`);
+  await adbShell(serial, `uiautomator dump /sdcard/ui.xml`);
+  await sleep(500);
+  let xml = await adbShell(serial, `cat /sdcard/ui.xml`);
+  
+  // NEW resource IDs from user
+  const commentButtonId = "com.ss.android.ugc.trill:id/e60";  // Comment button
+  const commentInputId = "com.ss.android.ugc.trill:id/e1k";  // EditText "Add comment..."
+  const postButtonId = "com.ss.android.ugc.trill:id/k09";  // Post button
+  
+  const inputAlreadyVisible = xml.includes(commentInputId);
+  
+  if (!inputAlreadyVisible) {
+    console.log(`[${serial}] Comment panel closed - opening it...`);
+    let commentBtn = await findElementById(serial, commentButtonId);
+    if (!commentBtn) commentBtn = { x: 992, y: 1210 };  // Center of [904,1127][1080,1292]
+    
+    console.log(`[${serial}] Tap comment button at [${commentBtn.x}, ${commentBtn.y}]`);
+    await adbShell(serial, `input tap ${commentBtn.x} ${commentBtn.y}`);
+    await sleep(DELAYS.afterCommentClick);
+    
+    await adbShell(serial, `uiautomator dump /sdcard/ui.xml`);
+    await sleep(500);
+  } else {
+    console.log(`[${serial}] ✅ Comment panel already open!`);
+  }
+
+  // 3. Tap input field
+  console.log(`[${serial}] Finding input field...`);
+  let input = await findElementById(serial, commentInputId);
+  if (!input) input = { x: 399, y: 1930 };  // Center of [199,1889][599,1970]
+  
+  console.log(`[${serial}] Tap input at [${input.x}, ${input.y}]`);
+  await adbShell(serial, `input tap ${input.x} ${input.y}`);
+  await sleep(DELAYS.beforeTyping);
+
+  // 4. Type comment - HUMAN-LIKE TYPING
+  console.log(`[${serial}] Typing like human: "${comment}"`);
+  await humanLikeTyping(serial, comment, adbShell, sleep);
+
+  // 5. Re-dump UI after typing to find post button
+  console.log(`[${serial}] Re-dumping UI to find post button...`);
+  await adbShell(serial, `uiautomator dump /sdcard/ui.xml`);
+  await sleep(800);
+
+  // 6. Tap post button
+  await sleep(DELAYS.beforePostClick);
+
+  console.log(`[${serial}] Finding post button...`);
+  let postBtn = await findPostButton(serial);
+  if (!postBtn) postBtn = { x: 976, y: 1158 };  // Center of [904,1114][1047,1202] (ckm)
+  
+  console.log(`[${serial}] Tap post at [${postBtn.x}, ${postBtn.y}]`);
+  await adbShell(serial, `input tap ${postBtn.x} ${postBtn.y}`);
+  await sleep(DELAYS.afterPostClick);
+
+  // 7. Close
+  await adbShell(serial, `input keyevent 4`);
+  console.log(`[${serial}] ✅ Comment sent!`);
 }
 
 export async function POST(req) {
   try {
     const body = await req.json();
-    const videoUrl = body.videoUrl || body.url || body.link;
-    const comment = body.comment || body.text;
-    const serial = body.serial || body.deviceSerial;
-    const serials = body.serials || body.deviceSerials;
-    const coords = body.coords || null;
+    const { videoUrl, comment, serials } = body;
 
-    console.log("\n╔══════════════════════════════════════════════════╗");
-    console.log("║          TIKTOK VIDEO COMMENT API                ║");
-    console.log("╚══════════════════════════════════════════════════╝");
+    if (!videoUrl) {
+      return NextResponse.json({ error: "videoUrl required" }, { status: 400 });
+    }
 
-    // ============================================
-    // MASS COMMENT MODE
-    // ============================================
+    if (!comment) {
+      return NextResponse.json({ error: "comment required" }, { status: 400 });
+    }
+
     if (serials && Array.isArray(serials) && serials.length > 0) {
-      console.log(`\n🚀 MASS MODE: ${serials.length} devices\n`);
-
       const results = [];
-
-      for (let i = 0; i < serials.length; i++) {
-        const deviceSerial = serials[i];
-        
-        console.log(`\n[${i + 1}/${serials.length}] Processing: ${deviceSerial}`);
-
+      for (const deviceSerial of serials) {
         try {
-          const { stdout: deviceList } = await execAsync(`adb devices`);
-          if (!deviceList.includes(deviceSerial)) {
-            throw new Error("Device not found");
-          }
-
-          const { stdout: state } = await execAsync(`adb -s ${deviceSerial} get-state`);
-          if (state.trim() !== "device") {
-            throw new Error(`Device not ready (${state.trim()})`);
-          }
-
-          await tiktokVideoComment(deviceSerial, comment, videoUrl, coords);
-
-          results.push({
-            serial: deviceSerial,
-            success: true,
-            message: "Comment sent successfully"
-          });
-
-          if (i < serials.length - 1) {
-            console.log(`⏳ Waiting 3s before next device...\n`);
-            await sleep(3000);
-          }
-
+          await tiktokComment(deviceSerial, comment, videoUrl);
+          results.push({ serial: deviceSerial, success: true });
         } catch (err) {
-          console.error(`❌ [${deviceSerial}] Failed:`, err.message);
-          results.push({
-            serial: deviceSerial,
-            success: false,
-            error: err.message
-          });
+          console.error(`[${deviceSerial}] Error:`, err.message);
+          results.push({ serial: deviceSerial, success: false, error: err.message });
         }
       }
-
       const successCount = results.filter(r => r.success).length;
-      const failCount = results.length - successCount;
-
-      return NextResponse.json({
-        success: true,
-        mode: "mass",
-        total: serials.length,
-        successCount,
-        failCount,
-        results
+      return NextResponse.json({ 
+        success: true, 
+        total: serials.length, 
+        successCount, 
+        failCount: serials.length - successCount, 
+        results 
       });
     }
 
-    // ============================================
-    // SINGLE DEVICE MODE
-    // ============================================
-    if (!videoUrl || !comment || !serial) {
-      return NextResponse.json({ error: "Missing fields" }, { status: 400 });
-    }
-
-    const { stdout: deviceList } = await execAsync(`adb devices`);
-    if (!deviceList.includes(serial)) {
-      return NextResponse.json({ error: `Device ${serial} not found` }, { status: 400 });
-    }
-
-    await tiktokVideoComment(serial, comment, videoUrl, coords);
-
-    return NextResponse.json({ 
-      success: true,
-      message: "Comment sent successfully"
-    });
+    return NextResponse.json({ error: "serials required" }, { status: 400 });
 
   } catch (error) {
-    console.error("❌ ERROR:", error.message);
+    console.error("[Error]:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

@@ -1,48 +1,34 @@
-import { NextResponse } from "next/server";
 import { exec } from "child_process";
-import util from "util";
+import { promisify } from "util";
 
-const execAsync = util.promisify(exec);
+const execPromise = promisify(exec);
 
 export async function POST(request) {
   try {
-    const body = await request.json();
-    const { serial } = body;
+    const { serial } = await request.json();
 
     if (!serial) {
-      return NextResponse.json(
-        { error: "Device serial harus diisi" },
-        { status: 400 }
-      );
+      return Response.json({ error: "Serial is required" }, { status: 400 });
     }
 
-    console.log(`Disconnecting device: ${serial}`);
+    console.log(`[API] Disconnecting device: ${serial}`);
 
-    // Disconnect device
-    const { stdout, stderr } = await execAsync(`adb disconnect ${serial}`);
-    
-    console.log("Disconnect output:", stdout);
-    if (stderr) console.error("Disconnect error:", stderr);
+    // Execute adb disconnect
+    const { stdout, stderr } = await execPromise(`adb disconnect ${serial}`);
 
-    return NextResponse.json({
+    console.log(`[API] stdout:`, stdout);
+    if (stderr) console.log(`[API] stderr:`, stderr);
+
+    return Response.json({
       success: true,
-      message: `Device ${serial} berhasil disconnect`,
-      output: stdout
+      message: `Device ${serial} disconnected`,
+      output: stdout,
     });
-
   } catch (error) {
-    console.error("Disconnect device error:", error);
-    return NextResponse.json(
-      { error: error.message || "Gagal disconnect device" },
+    console.error(`[API] Disconnect error:`, error);
+    return Response.json(
+      { error: error.message || "Failed to disconnect device" },
       { status: 500 }
     );
   }
-}
-
-export async function GET() {
-  return NextResponse.json({
-    message: "Disconnect Device API",
-    methods: ["POST"],
-    requiredParams: ["serial"]
-  });
 }

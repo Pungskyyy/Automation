@@ -139,7 +139,6 @@ export default function HomePage() {
         [deviceSerial]: [logEntry, ...(prev[deviceSerial] || []).slice(0, 50)]
       }));
     }
-  }
 
   // ✅ Screenshot Helper Function
   async function takeScreenshot(serial, actionType) {
@@ -168,6 +167,7 @@ export default function HomePage() {
     } catch (error) {
       console.error("Screenshot failed:", error);
       return null;
+    }
   }
   }
 
@@ -2730,46 +2730,6 @@ export default function HomePage() {
                                 </div>
                               </div>
                             ))
-                          )}
-                        </div>
-                      </div>
-
-                      {/* ✅ Screenshot Gallery */}
-                      <div style={{ marginTop: 24 }}>
-                        <h4 style={{ fontSize: 14, fontWeight: 600, color: "#64748b", marginBottom: 12 }}>
-                          📸 Screenshots ({(deviceScreenshots[device.serial] || []).length})
-                        </h4>
-                        <div style={{ maxHeight: 400, overflowY: "auto" }}>
-                          {(deviceScreenshots[device.serial] || []).length === 0 ? (
-                            <div style={{ textAlign: "center", padding: 40, color: "#94a3b8", background: "#f8fafc", borderRadius: 8 }}>
-                              No screenshots captured yet
-                            </div>
-                          ) : (
-                            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12 }}>
-                              {deviceScreenshots[device.serial].map((screenshot, sIdx) => (
-                                <div
-                                  key={sIdx}
-                                  style={{ background: "#f8fafc", borderRadius: 10, border: "1px solid #e2e8f0", padding: 10, transition: "all 0.2s", cursor: "pointer" }}
-                                  onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-4px)"; e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.1)"; }}
-                                  onMouseLeave={(e) => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "none"; }}
-                                >
-                                  <div style={{ width: "100%", height: 160, background: "#e2e8f0", borderRadius: 8, marginBottom: 10, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                                    <img src={screenshot.url} alt={`Screenshot ${sIdx + 1}`} style={{ width: "100%", height: "100%", objectFit: "cover" }} onError={(e) => { e.target.style.display = "none"; e.target.parentElement.innerHTML = '<div style="font-size:40px;color:#94a3b8">📸</div>'; }} />
-                                  </div>
-                                  <div style={{ marginBottom: 8 }}>
-                                    <div style={{ fontSize: 11, fontWeight: 600, color: "#334155", marginBottom: 4, textTransform: "capitalize" }}>
-                                      {screenshot.actionType.replace(/-/g, ' ')}
-                                    </div>
-                                    <div style={{ fontSize: 10, color: "#94a3b8" }}>
-                                      {new Date(screenshot.timestamp).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                                    </div>
-                                  </div>
-                                  <a href={screenshot.url} download={`${device.serial}_${screenshot.actionType}_${screenshot.timestamp}.png`} style={{ display: "block", padding: "8px 12px", borderRadius: 6, background: "linear-gradient(135deg, #10b981, #14b8a6)", color: "white", fontSize: 11, fontWeight: 600, textAlign: "center", textDecoration: "none", transition: "all 0.2s" }} onMouseEnter={(e) => { e.target.style.transform = "scale(1.05)"; }} onMouseLeave={(e) => { e.target.style.transform = "scale(1)"; }}>
-                                    📥 Download
-                                  </a>
-                                </div>
-                              ))}
-                            </div>
                           )}
                         </div>
                       </div>

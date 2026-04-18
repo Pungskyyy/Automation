@@ -1,47 +1,92 @@
-// app/api/devices/route.js
 import { NextResponse } from "next/server";
 import { exec } from "child_process";
-import util from "util";
+import { promisify } from "util";
 
-const run = util.promisify(exec);
+const execAsync = promisify(exec);
 
 export async function GET() {
   try {
-    // Jalankan perintah adb untuk mendeteksi perangkat yang terhubung
-    const { stdout } = await run("adb devices -l");
+    // Execute adb devices -l to get detailed info
+    const { stdout } = await execAsync("adb devices -l");
+    
+    console.log("[API /devices] Raw ADB output:", stdout);
 
-    // Parsing output adb untuk mendapatkan daftar perangkat
-    const devices = stdout
-      .split("\n")
-      .slice(1) // Abaikan header
-      .filter((line) => line.trim() !== "") // Abaikan baris kosong
-      .map((line) => {
-        // Split by tab atau whitespace dan ambil hanya serial (kolom pertama) dan status (kolom kedua)
-        const parts = line.trim().split(/\s+/);
-        const serial = parts[0]; // Serial number saja
-        const status = parts[1]; // Status (device, unauthorized, dll)
-        return { serial, status };
+    const lines = stdout.trim().split("\n").slice(1); // Skip header
+    const devices = [];
+
+    for (const line of lines) {
+      if (!line.trim()) continue;
+
+      const parts = line.trim().split(/\s+/);
+      const serial = parts[0];
+      const state = parts[1];
+
+      // Extract model from device info
+      let model = "Unknown";
+      const modelMatch = line.match(/model:([^\s]+)/);
+      if (modelMatch) {
+        model = modelMatch[1].replace(/_/g, " ");
+      }
+
+      // Determine type (USB or TCP/IP)
+      const type = serial.includes(":") ? "tcpip" : "usb";
+
+      devices.push({
+        serial,
+        state,
+        model,
+        type,
       });
+    }
+
+    console.log("[API /devices] Parsed devices:", devices);
 
     return NextResponse.json({ devices });
-  } catch (err) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (error) {
+    console.error("[API /devices] Error:", error);
+    return NextResponse.json(
+      { error: error.message, devices: [] },
+      { status: 500 }
+    );
   }
 }
 
-export async function POST(req) {
+export async function POST(request) {
   try {
-    const { serial } = await req.json();
+    const { serial } = await request.json();
 
     if (!serial) {
-      return NextResponse.json({ error: "Serial perangkat tidak diberikan" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Serial number required" },
+        { status: 400 }
+      );
     }
 
-    // Jalankan perintah adb tcpip untuk mengaktifkan mode TCP/IP
-    await run(`adb -s ${serial} tcpip 5555`);
+    console.log(`[API /disconnect] Disconnecting device: ${serial}`);
 
-    return NextResponse.json({ message: `Perangkat ${serial} sekarang dalam mode TCP/IP` });
-  } catch (err) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    // Execute adb disconnect
+    const { stdout, stderr } = await execAsync(`adb disconnect ${serial}`);
+
+    console.log("[API /disconnect] stdout:", stdout);
+    if (stderr) console.log("[API /disconnect] stderr:", stderr);
+
+    // Check if disconnect was successful
+    const success = stdout.includes("disconnected") || !stderr;
+
+    if (!success) {
+      throw new Error(stderr || "Failed to disconnect device");
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: `Device ${serial} disconnected successfully`,
+      output: stdout,
+    });
+  } catch (error) {
+    console.error("[API /disconnect] Error:", error);
+    return NextResponse.json(
+      { error: error.message },
+      { status: 500 }
+    );
   }
 }

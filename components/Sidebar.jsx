@@ -5,14 +5,13 @@ export default function Sidebar({ active, onChange }) {
   const [openMenu, setOpenMenu] = useState(null);
 
   const menu = [
-    { id: "devices", label: "Scan Devices", icon: "🖥️" },
-    { id: "connect-ip", label: "Connect by IP", icon: "🌐" },
+    { id: "devices", label: "Scan Devices", icon: "📱" },
     {
       id: "instagram",
       label: "Instagram",
       icon: "📸",
       submenus: [
-        { id: "instagram-post", label: "Instagram Post" },
+        { id: "instagram-post", label: "Instagram Post" }, // ✅ Tanpa route
         { id: "instagram-reels", label: "Instagram Reels" },
       ],
     },
@@ -25,10 +24,13 @@ export default function Sidebar({ active, onChange }) {
         { id: "tiktok-post", label: "TikTok Post" },
       ],
     },
+    { id: "connect-ip", label: "Connect by IP", icon: "🌐" },
+    { id: "automation", label: "Automation", icon: "⚙️" },
+    { id: "logs", label: "Logs", icon: "📋" },
   ];
 
   const handleMenuClick = (id) => {
-    onChange(id);
+    onChange(id); // ✅ Update activeSection di page.jsx
   };
 
   const handleSubmenuToggle = (id) => {
@@ -48,6 +50,9 @@ export default function Sidebar({ active, onChange }) {
         flexDirection: "column",
         gap: "22px",
         overflow: "auto",
+        position: "fixed",
+        left: "20px",
+        top: "20px",
       }}
     >
       {/* Logo */}
@@ -56,7 +61,7 @@ export default function Sidebar({ active, onChange }) {
           OPA AUTOMATION
         </div>
         <div style={{ opacity: 0.6, fontSize: "12px", color: "#cbd5e1" }}>
-          Multi-Device Automation
+          Multi-Device Control
         </div>
       </div>
 
@@ -84,28 +89,13 @@ export default function Sidebar({ active, onChange }) {
                 color: active === m.id ? "#1e293b" : "#e2e8f0",
                 backgroundColor: active === m.id ? "#38bdf8" : "transparent",
                 boxShadow:
-                  active === m.id
-                    ? "0 4px 8px rgba(56, 189, 248, 0.3)"
-                    : "none",
+                  active === m.id ? "0 4px 8px rgba(56, 189, 248, 0.3)" : "none",
                 transition: "all 0.3s ease",
-                transform: "scale(1)",
-              }}
-              onMouseEnter={(e) => {
-                if (active !== m.id) {
-                  e.currentTarget.style.backgroundColor = "#334155";
-                  e.currentTarget.style.transform = "scale(1.02)";
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (active !== m.id) {
-                  e.currentTarget.style.backgroundColor = "transparent";
-                  e.currentTarget.style.transform = "scale(1)";
-                }
               }}
             >
               <span style={{ fontSize: "18px" }}>{m.icon}</span> {m.label}
             </div>
-            
+
             {/* Submenus */}
             {openMenu === m.id && m.submenus && (
               <div
@@ -131,21 +121,6 @@ export default function Sidebar({ active, onChange }) {
                       backgroundColor:
                         active === submenu.id ? "#334155" : "transparent",
                       transition: "all 0.3s ease",
-                      transform: "scale(1)",
-                    }}
-                    onMouseEnter={(e) => {
-                      if (active !== submenu.id) {
-                        e.currentTarget.style.backgroundColor = "#1e293b";
-                        e.currentTarget.style.transform = "scale(1.02)";
-                        e.currentTarget.style.paddingLeft = "18px";
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (active !== submenu.id) {
-                        e.currentTarget.style.backgroundColor = "transparent";
-                        e.currentTarget.style.transform = "scale(1)";
-                        e.currentTarget.style.paddingLeft = "14px";
-                      }
                     }}
                   >
                     {submenu.label}
@@ -167,7 +142,7 @@ export default function Sidebar({ active, onChange }) {
           textAlign: "center",
         }}
       >
-        © 2025 ADB Neon Console
+        v1.0.0 | OPA Automation
       </div>
     </aside>
   );
