@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import QRCode from "qrcode-reader";
-import Jimp from "jimp";
-
+const Jimp = require("jimp");
 export async function POST(req) {
   try {
     const { imageBase64 } = await req.json();
