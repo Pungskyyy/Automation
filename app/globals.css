@@ -26,18 +26,43 @@ body {
   }
 }
 
-/* CUSTOM: Placeholder warna hitam/gelap agar lebih jelas */
-input::placeholder,
-textarea::placeholder {
-  color: #1f2937 !important;
+/* PLACEHOLDER COLOR - HITAM/GELAP */
+input::placeholder {
+  color: #000000 !important;
   opacity: 1 !important;
 }
 
-/* Dark mode placeholder */
-@media (prefers-color-scheme: dark) {
-  input::placeholder,
-  textarea::placeholder {
-    color: #d1d5db !important;
-    opacity: 0.9 !important;
-  }
+textarea::placeholder {
+  color: #000000 !important;
+  opacity: 1 !important;
+}
+
+input::-webkit-input-placeholder {
+  color: #000000 !important;
+  opacity: 1 !important;
+}
+
+textarea::-webkit-input-placeholder {
+  color: #000000 !important;
+  opacity: 1 !important;
+}
+
+input::-moz-placeholder {
+  color: #000000 !important;
+  opacity: 1 !important;
+}
+
+textarea::-moz-placeholder {
+  color: #000000 !important;
+  opacity: 1 !important;
+}
+
+input:-ms-input-placeholder {
+  color: #000000 !important;
+  opacity: 1 !important;
+}
+
+textarea:-ms-input-placeholder {
+  color: #000000 !important;
+  opacity: 1 !important;
 }
