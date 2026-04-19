@@ -21,6 +21,12 @@ export async function GET() {
       const serial = parts[0];
       const state = parts[1];
 
+      // ✅ HANYA TAMPILKAN DEVICE YANG STATE = "device" (benar-benar terhubung)
+      if (state !== "device") {
+        console.log(`[API /devices] Skipping device ${serial} with state: ${state}`);
+        continue;
+      }
+
       // Extract model from device info
       let model = "Unknown";
       const modelMatch = line.match(/model:([^\s]+)/);
@@ -39,13 +45,17 @@ export async function GET() {
       });
     }
 
-    console.log("[API /devices] Parsed devices:", devices);
+    console.log("[API /devices] Connected devices:", devices);
 
-    return NextResponse.json({ devices });
+    return NextResponse.json({ 
+      devices,
+      count: devices.length,
+      timestamp: new Date().toISOString()
+    });
   } catch (error) {
     console.error("[API /devices] Error:", error);
     return NextResponse.json(
-      { error: error.message, devices: [] },
+      { error: error.message, devices: [], count: 0 },
       { status: 500 }
     );
   }

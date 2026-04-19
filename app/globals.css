@@ -26,43 +26,52 @@ body {
   }
 }
 
-/* PLACEHOLDER COLOR - HITAM/GELAP */
+/* ✅ FIX: WARNA INPUT TEXT - HITAM GELAP */
+input[type="text"],
+input[type="password"],
+input[type="email"],
+textarea,
+select {
+  color: #1e293b !important;
+}
+
+/* PLACEHOLDER COLOR - ABU-ABU */
 input::placeholder {
-  color: #000000 !important;
+  color: #94a3b8 !important;
   opacity: 1 !important;
 }
 
 textarea::placeholder {
-  color: #000000 !important;
+  color: #94a3b8 !important;
   opacity: 1 !important;
 }
 
 input::-webkit-input-placeholder {
-  color: #000000 !important;
+  color: #94a3b8 !important;
   opacity: 1 !important;
 }
 
 textarea::-webkit-input-placeholder {
-  color: #000000 !important;
+  color: #94a3b8 !important;
   opacity: 1 !important;
 }
 
 input::-moz-placeholder {
-  color: #000000 !important;
+  color: #94a3b8 !important;
   opacity: 1 !important;
 }
 
 textarea::-moz-placeholder {
-  color: #000000 !important;
+  color: #94a3b8 !important;
   opacity: 1 !important;
 }
 
 input:-ms-input-placeholder {
-  color: #000000 !important;
+  color: #94a3b8 !important;
   opacity: 1 !important;
 }
 
 textarea:-ms-input-placeholder {
-  color: #000000 !important;
+  color: #94a3b8 !important;
   opacity: 1 !important;
 }

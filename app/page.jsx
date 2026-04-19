@@ -25,6 +25,18 @@ export default function HomePage() {
     home: false
   });
 
+
+  // ✅ NEW: Add Device Modal States
+  const [showAddDeviceModal, setShowAddDeviceModal] = useState(false);
+  const [deviceIpAddress, setDeviceIpAddress] = useState("");
+  const [devicePort, setDevicePort] = useState("5555");
+  const [addingDevice, setAddingDevice] = useState(false);
+
+  // ✅ NEW: TCP/IP Bulk Enable States
+  const [showTcpipModal, setShowTcpipModal] = useState(false);
+  const [tcpipPort, setTcpipPort] = useState("5555");
+  const [enablingTcpip, setEnablingTcpip] = useState(false);
+
   // Sidebar state untuk expand/collapse platform
   const [expandedPlatforms, setExpandedPlatforms] = useState({});
 
@@ -81,7 +93,23 @@ export default function HomePage() {
   const [xReportReason, setXReportReason] = useState("spam");
   const [xReportLoading, setXReportLoading] = useState(false);
 
-  // ✅ FIXED: Disable auto-login - always show login page on restart
+
+  // ✅ NEW: Real-time device refresh every 3 seconds
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    // Initial fetch
+    fetchDevices();
+
+    // Auto-refresh every 3 seconds
+    const interval = setInterval(() => {
+      fetchDevices();
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [isAuthenticated]);
+
+    // ✅ FIXED: Disable auto-login - always show login page on restart
   useEffect(() => {
     setLoading(false);
   }, []);
@@ -91,6 +119,11 @@ export default function HomePage() {
       const res = await fetch("/api/devices");
       const data = await res.json();
       setDevices(data.devices || []);
+      
+      // ✅ Remove disconnected devices from selection
+      setSelectedDevices(prev => 
+        prev.filter(serial => (data.devices || []).some(d => d.serial === serial))
+      );
     } catch (err) {
       console.error("Error fetching devices:", err);
     } finally {
@@ -615,7 +648,91 @@ export default function HomePage() {
     setXReportLoading(false);
   }
 
-  // Menu Structure with Nested Platforms
+
+  // ✅ NEW: Add Device via TCP/IP
+  async function handleAddDevice() {
+    if (!deviceIpAddress) {
+      addLog("IP Address harus diisi", "error");
+      return;
+    }
+
+    setAddingDevice(true);
+    addLog(`Menghubungkan ke ${deviceIpAddress}:${devicePort}...`, "info");
+
+    try {
+      const res = await fetch("/api/adb/tcpip/connect-ip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ip: deviceIpAddress,
+          port: devicePort
+        })
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        addLog(`✅ Device ${deviceIpAddress} berhasil terhubung!`, "success");
+        setDeviceIpAddress("");
+        setDevicePort("5555");
+        setShowAddDeviceModal(false);
+        fetchDevices(); // Refresh device list
+      } else {
+        addLog(`❌ Gagal: ${data.error}`, "error");
+      }
+    } catch (err) {
+      addLog(`❌ Error: ${err.message}`, "error");
+    } finally {
+      setAddingDevice(false);
+    }
+  }
+
+  // ✅ NEW: Enable TCP/IP on ALL selected devices
+  async function handleEnableTcpipBulk() {
+    if (selectedDevices.length === 0) {
+      addLog("Pilih minimal 1 device untuk enable TCP/IP", "error");
+      return;
+    }
+
+    setEnablingTcpip(true);
+    addLog(`Mengaktifkan TCP/IP mode pada ${selectedDevices.length} device...`, "info");
+
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const serial of selectedDevices) {
+      try {
+        const res = await fetch("/api/adb/tcpip", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            serial,
+            port: parseInt(tcpipPort)
+          })
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+          addLog(`✅ ${serial}: TCP/IP enabled (IP: ${data.ip || 'Unknown'})`, "success");
+          successCount++;
+        } else {
+          throw new Error(data.error);
+        }
+      } catch (err) {
+        addLog(`❌ ${serial}: ${err.message}`, "error");
+        failCount++;
+      }
+
+      await new Promise(r => setTimeout(r, 500));
+    }
+
+    addLog(`Selesai! Success: ${successCount}, Failed: ${failCount}`, successCount > 0 ? "success" : "error");
+    setShowTcpipModal(false);
+    setEnablingTcpip(false);
+  }
+
+    // Menu Structure with Nested Platforms
   const menuItems = [
     { id: "home", label: "Home", icon: "🏠", type: "single" },
     { id: "devices", label: "Device Manager", icon: "📱", type: "single" },
@@ -908,6 +1025,7 @@ export default function HomePage() {
                   borderRadius: 12,
                   border: "2px solid #e2e8f0",
                   fontSize: 14,
+                  color: "#1e293b",
                   outline: "none",
                   transition: "all 0.2s",
                   boxSizing: "border-box"
@@ -932,6 +1050,7 @@ export default function HomePage() {
                   borderRadius: 12,
                   border: "2px solid #e2e8f0",
                   fontSize: 14,
+                  color: "#1e293b",
                   outline: "none",
                   transition: "all 0.2s",
                   boxSizing: "border-box"
@@ -2458,7 +2577,7 @@ export default function HomePage() {
         {activeSection === "devices" && (
           <div>
             <h2 style={{ fontSize: 28, fontWeight: 700, marginBottom: 32, color: "#334155" }}>
-              📱 Device Manager
+              �� Device Manager
             </h2>
 
             <div style={{
@@ -2472,24 +2591,107 @@ export default function HomePage() {
                 <h3 style={{ fontSize: 18, margin: 0, color: "#16a34a", fontWeight: 700 }}>
                   Connected Devices ({devices.length})
                 </h3>
-                <button
-                  onClick={fetchDevices}
-                  disabled={loading}
-                  style={{
-                    padding: "8px 16px",
-                    borderRadius: 8,
-                    background: loading ? "#94a3b8" : "linear-gradient(135deg, #10b981, #14b8a6)",
-                    border: "none",
-                    color: "white",
-                    fontSize: 13,
-                    fontWeight: 600,
-                    cursor: loading ? "not-allowed" : "pointer",
-                    boxShadow: "0 2px 6px rgba(16, 185, 129, 0.3)"
-                  }}
-                >
-                  {loading ? "⏳ Refreshing..." : "🔄 Refresh"}
-                </button>
+                <div style={{ display: "flex", gap: 12 }}>
+                  {/* ✅ NEW: Add Device Button */}
+                  <button
+                    onClick={() => setShowAddDeviceModal(true)}
+                    style={{
+                      padding: "10px 20px",
+                      borderRadius: 10,
+                      background: "linear-gradient(135deg, #3b82f6, #2563eb)",
+                      border: "none",
+                      color: "white",
+                      fontSize: 14,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      boxShadow: "0 2px 8px rgba(59, 130, 246, 0.3)",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8
+                    }}
+                  >
+                    ➕ Add Device
+                  </button>
+
+                  {/* ✅ NEW: Enable TCP/IP Button */}
+                  <button
+                    onClick={() => setShowTcpipModal(true)}
+                    disabled={selectedDevices.length === 0}
+                    style={{
+                      padding: "10px 20px",
+                      borderRadius: 10,
+                      background: selectedDevices.length === 0 
+                        ? "#94a3b8" 
+                        : "linear-gradient(135deg, #8b5cf6, #7c3aed)",
+                      border: "none",
+                      color: "white",
+                      fontSize: 14,
+                      fontWeight: 600,
+                      cursor: selectedDevices.length === 0 ? "not-allowed" : "pointer",
+                      boxShadow: selectedDevices.length === 0 ? "none" : "0 2px 8px rgba(139, 92, 246, 0.3)",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8
+                    }}
+                  >
+                    📡 Enable TCP/IP ({selectedDevices.length})
+                  </button>
+
+                  <button
+                    onClick={fetchDevices}
+                    disabled={loading}
+                    style={{
+                      padding: "10px 20px",
+                      borderRadius: 10,
+                      background: loading ? "#94a3b8" : "linear-gradient(135deg, #10b981, #14b8a6)",
+                      border: "none",
+                      color: "white",
+                      fontSize: 14,
+                      fontWeight: 600,
+                      cursor: loading ? "not-allowed" : "pointer",
+                      boxShadow: loading ? "none" : "0 2px 8px rgba(16, 185, 129, 0.3)"
+                    }}
+                  >
+                    {loading ? "⏳ Refreshing..." : "🔄 Refresh"}
+                  </button>
+                </div>
               </div>
+
+              {/* Device Selection Controls */}
+              {devices.length > 0 && (
+                <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+                  <button
+                    onClick={selectAllDevices}
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: 8,
+                      background: "#dcfce7",
+                      border: "1px solid #86efac",
+                      color: "#16a34a",
+                      cursor: "pointer",
+                      fontSize: 12,
+                      fontWeight: 600
+                    }}
+                  >
+                    Select All
+                  </button>
+                  <button
+                    onClick={deselectAllDevices}
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: 8,
+                      background: "#fee2e2",
+                      border: "1px solid #fca5a5",
+                      color: "#dc2626",
+                      cursor: "pointer",
+                      fontSize: 12,
+                      fontWeight: 600
+                    }}
+                  >
+                    Deselect All
+                  </button>
+                </div>
+              )}
 
               {loading ? (
                 <div style={{ textAlign: "center", padding: 60, color: "#94a3b8" }}>
@@ -2502,83 +2704,111 @@ export default function HomePage() {
                   <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>
                     No devices connected
                   </div>
-                  <div style={{ fontSize: 14 }}>
-                    Connect your Android devices via ADB
+                  <div style={{ fontSize: 14, marginBottom: 20 }}>
+                    Connect your Android devices via ADB or use Add Device button
                   </div>
+                  <button
+                    onClick={() => setShowAddDeviceModal(true)}
+                    style={{
+                      padding: "12px 24px",
+                      borderRadius: 10,
+                      background: "linear-gradient(135deg, #3b82f6, #2563eb)",
+                      border: "none",
+                      color: "white",
+                      fontSize: 14,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      boxShadow: "0 2px 8px rgba(59, 130, 246, 0.3)"
+                    }}
+                  >
+                    ➕ Add Device via TCP/IP
+                  </button>
                 </div>
               ) : (
                 <div style={{ display: "grid", gap: 12 }}>
-                  {devices.map((device, idx) => (
-                    <div
-                      key={device.serial}
-                      style={{
-                        padding: 20,
-                        background: "#f8fafc",
-                        borderRadius: 12,
-                        border: "1px solid #e2e8f0",
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center"
-                      }}
-                    >
-                      <div>
-                        <div style={{
+                  {devices.map((device, idx) => {
+                    const selected = selectedDevices.includes(device.serial);
+                    return (
+                      <div
+                        key={device.serial}
+                        onClick={() => toggleDevice(device.serial)}
+                        style={{
+                          padding: 20,
+                          background: selected ? "#dcfce7" : "#f8fafc",
+                          borderRadius: 12,
+                          border: selected ? "2px solid #22c55e" : "1px solid #e2e8f0",
                           display: "flex",
+                          justifyContent: "space-between",
                           alignItems: "center",
-                          gap: 12,
-                          marginBottom: 8
-                        }}>
+                          cursor: "pointer",
+                          transition: "all 0.2s"
+                        }}
+                      >
+                        <div>
                           <div style={{
-                            width: 40,
-                            height: 40,
-                            borderRadius: 8,
-                            background: "linear-gradient(135deg, #10b981, #14b8a6)",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 12,
+                            marginBottom: 8
+                          }}>
+                            <div style={{
+                              width: 40,
+                              height: 40,
+                              borderRadius: 8,
+                              background: selected 
+                                ? "linear-gradient(135deg, #22c55e, #10b981)" 
+                                : "linear-gradient(135deg, #94a3b8, #64748b)",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              color: "white",
+                              fontSize: 18,
+                              fontWeight: 700
+                            }}>
+                              {idx + 1}
+                            </div>
+                            <div>
+                              <div style={{
+                                fontSize: 15,
+                                fontWeight: 600,
+                                fontFamily: "monospace",
+                                color: "#334155"
+                              }}>
+                                {device.serial}
+                              </div>
+                              <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
+                                {device.model || "Unknown Model"}
+                              </div>
+                            </div>
+                          </div>
+                          <div style={{ fontSize: 11, color: "#94a3b8", marginLeft: 52 }}>
+                            Status: <span style={{ color: "#22c55e", fontWeight: 600 }}>�� Online</span>
+                          </div>
+                        </div>
+                        {selected && (
+                          <div style={{
+                            width: 28,
+                            height: 28,
+                            borderRadius: "50%",
+                            background: "#22c55e",
                             display: "flex",
                             alignItems: "center",
                             justifyContent: "center",
                             color: "white",
-                            fontSize: 18,
+                            fontSize: 16,
                             fontWeight: 700
                           }}>
-                            {idx + 1}
+                            ✓
                           </div>
-                          <div>
-                            <div style={{
-                              fontSize: 15,
-                              fontWeight: 600,
-                              fontFamily: "monospace",
-                              color: "#334155"
-                            }}>
-                              {device.serial}
-                            </div>
-                            <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
-                              {device.model || "Unknown Model"}
-                            </div>
-                          </div>
-                        </div>
-                        <div style={{ fontSize: 11, color: "#94a3b8", marginLeft: 52 }}>
-                          Status: <span style={{ color: "#22c55e", fontWeight: 600 }}>Online</span>
-                        </div>
+                        )}
                       </div>
-                      <div style={{
-                        padding: "6px 12px",
-                        borderRadius: 6,
-                        background: "#dcfce7",
-                        border: "1px solid #86efac",
-                        color: "#16a34a",
-                        fontSize: 11,
-                        fontWeight: 600
-                      }}>
-                        Connected
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
           </div>
         )}
-
 
         {/* DEVICE LOGS SECTION */}
         {activeSection === "device-logs" && (
@@ -2761,7 +2991,7 @@ export default function HomePage() {
                                       {screenshot.actionType.replace(/-/g, ' ')}
                                     </div>
                                     <div style={{ fontSize: 10, color: "#94a3b8" }}>
-                                      {new Date(screenshot.timestamp).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                      {new Date(screenshot.timestamp)    .toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
                                     </div>
                                   </div>
                                   <a href={screenshot.url} download={`${device.serial}_${screenshot.actionType}_${screenshot.timestamp}.png`} style={{ display: "block", padding: "8px 12px", borderRadius: 6, background: "linear-gradient(135deg, #10b981, #14b8a6)", color: "white", fontSize: 11, fontWeight: 600, textAlign: "center", textDecoration: "none", transition: "all 0.2s" }} onMouseEnter={(e) => { e.target.style.transform = "scale(1.05)"; }} onMouseLeave={(e) => { e.target.style.transform = "scale(1)"; }}>
@@ -2780,6 +3010,284 @@ export default function HomePage() {
             )}
           </div>
         )}
+
+      {/* ✅ ADD DEVICE MODAL */}
+      {showAddDeviceModal && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: "rgba(0,0,0,0.5)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 9999
+        }} onClick={() => setShowAddDeviceModal(false)}>
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "white",
+              borderRadius: 20,
+              padding: 32,
+              maxWidth: 500,
+              width: "90%",
+              boxShadow: "0 20px 60px rgba(0,0,0,0.3)"
+            }}
+          >
+            <h3 style={{ fontSize: 24, fontWeight: 700, marginBottom: 8, color: "#334155" }}>
+              ➕ Add Device via TCP/IP
+            </h3>
+            <p style={{ fontSize: 14, color: "#64748b", marginBottom: 24 }}>
+              Connect to a device wirelessly using its IP address
+            </p>
+
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ display: "block", marginBottom: 8, fontSize: 14, fontWeight: 600, color: "#334155" }}>
+                IP Address
+              </label>
+              <input
+                type="text"
+                value={deviceIpAddress}
+                onChange={(e) => setDeviceIpAddress(e.target.value)}
+                placeholder="192.168.1.100"
+                style={{
+                  width: "100%",
+                  padding: 12,
+                  borderRadius: 10,
+                  border: "2px solid #e2e8f0",
+                  fontSize: 14,
+                  outline: "none",
+                  boxSizing: "border-box"
+                }}
+                onFocus={(e) => e.target.style.borderColor = "#3b82f6"}
+                onBlur={(e) => e.target.style.borderColor = "#e2e8f0"}
+              />
+            </div>
+
+            <div style={{ marginBottom: 24 }}>
+              <label style={{ display: "block", marginBottom: 8, fontSize: 14, fontWeight: 600, color: "#334155" }}>
+                Port (default: 5555)
+              </label>
+              <input
+                type="text"
+                value={devicePort}
+                onChange={(e) => setDevicePort(e.target.value)}
+                placeholder="5555"
+                style={{
+                  width: "100%",
+                  padding: 12,
+                  borderRadius: 10,
+                  border: "2px solid #e2e8f0",
+                  fontSize: 14,
+                  outline: "none",
+                  boxSizing: "border-box"
+                }}
+                onFocus={(e) => e.target.style.borderColor = "#3b82f6"}
+                onBlur={(e) => e.target.style.borderColor = "#e2e8f0"}
+              />
+            </div>
+
+            <div style={{ display: "flex", gap: 12 }}>
+              <button
+                onClick={handleAddDevice}
+                disabled={addingDevice || !deviceIpAddress}
+                style={{
+                  flex: 1,
+                  padding: 14,
+                  borderRadius: 10,
+                  border: "none",
+                  background: addingDevice || !deviceIpAddress
+                    ? "#94a3b8"
+                    : "linear-gradient(135deg, #3b82f6, #2563eb)",
+                  color: "white",
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: addingDevice || !deviceIpAddress ? "not-allowed" : "pointer",
+                  boxShadow: "0 2px 8px rgba(59, 130, 246, 0.3)"
+                }}
+              >
+                {addingDevice ? "⏳ Connecting..." : "✓ Connect"}
+              </button>
+              <button
+                onClick={() => setShowAddDeviceModal(false)}
+                disabled={addingDevice}
+                style={{
+                  flex: 1,
+                  padding: 14,
+                  borderRadius: 10,
+                  border: "1px solid #e2e8f0",
+                  background: "white",
+                  color: "#64748b",
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: addingDevice ? "not-allowed" : "pointer"
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+
+            <div style={{
+              marginTop: 20,
+              padding: 16,
+              background: "#dbeafe",
+              borderRadius: 10,
+              border: "1px solid #93c5fd"
+            }}>
+              <div style={{ fontSize: 12, color: "#1e40af", fontWeight: 600, marginBottom: 8 }}>
+                💡 How to find device IP:
+              </div>
+              <div style={{ fontSize: 11, color: "#3b82f6" }}>
+                1. Enable TCP/IP on device first (use Enable TCP/IP button)
+                <br />
+                2. Device Settings → About Phone → Status → IP Address
+                <br />
+                3. Or use: adb shell ip addr show wlan0
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ ENABLE TCP/IP BULK MODAL */}
+      {showTcpipModal && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: "rgba(0,0,0,0.5)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 9999
+        }} onClick={() => setShowTcpipModal(false)}>
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "white",
+              borderRadius: 20,
+              padding: 32,
+              maxWidth: 500,
+              width: "90%",
+              boxShadow: "0 20px 60px rgba(0,0,0,0.3)"
+            }}
+          >
+            <h3 style={{ fontSize: 24, fontWeight: 700, marginBottom: 8, color: "#334155" }}>
+              📡 Enable TCP/IP Mode
+            </h3>
+            <p style={{ fontSize: 14, color: "#64748b", marginBottom: 24 }}>
+              Enable wireless debugging on {selectedDevices.length} selected device{selectedDevices.length > 1 ? 's' : ''}
+            </p>
+
+            <div style={{ marginBottom: 24 }}>
+              <label style={{ display: "block", marginBottom: 8, fontSize: 14, fontWeight: 600, color: "#334155" }}>
+                Port (default: 5555)
+              </label>
+              <input
+                type="text"
+                value={tcpipPort}
+                onChange={(e) => setTcpipPort(e.target.value)}
+                placeholder="5555"
+                style={{
+                  width: "100%",
+                  padding: 12,
+                  borderRadius: 10,
+                  border: "2px solid #e2e8f0",
+                  fontSize: 14,
+                  outline: "none",
+                  boxSizing: "border-box"
+                }}
+                onFocus={(e) => e.target.style.borderColor = "#8b5cf6"}
+                onBlur={(e) => e.target.style.borderColor = "#e2e8f0"}
+              />
+            </div>
+
+            <div style={{
+              marginBottom: 24,
+              padding: 16,
+              background: "#f0fdf4",
+              borderRadius: 10,
+              border: "1px solid #bbf7d0"
+            }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: "#16a34a", marginBottom: 8 }}>
+                📱 Selected Devices ({selectedDevices.length}):
+              </div>
+              <div style={{ fontSize: 11, color: "#15803d", maxHeight: 120, overflowY: "auto" }}>
+                {selectedDevices.map((serial, idx) => (
+                  <div key={serial} style={{ marginBottom: 4 }}>
+                    {idx + 1}. {serial}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: 12 }}>
+              <button
+                onClick={handleEnableTcpipBulk}
+                disabled={enablingTcpip}
+                style={{
+                  flex: 1,
+                  padding: 14,
+                  borderRadius: 10,
+                  border: "none",
+                  background: enablingTcpip
+                    ? "#94a3b8"
+                    : "linear-gradient(135deg, #8b5cf6, #7c3aed)",
+                  color: "white",
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: enablingTcpip ? "not-allowed" : "pointer",
+                  boxShadow: "0 2px 8px rgba(139, 92, 246, 0.3)"
+                }}
+              >
+                {enablingTcpip ? "⏳ Enabling..." : "✓ Enable TCP/IP"}
+              </button>
+              <button
+                onClick={() => setShowTcpipModal(false)}
+                disabled={enablingTcpip}
+                style={{
+                  flex: 1,
+                  padding: 14,
+                  borderRadius: 10,
+                  border: "1px solid #e2e8f0",
+                  background: "white",
+                  color: "#64748b",
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: enablingTcpip ? "not-allowed" : "pointer"
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+
+            <div style={{
+              marginTop: 20,
+              padding: 16,
+              background: "#fef3c7",
+              borderRadius: 10,
+              border: "1px solid #fde047"
+            }}>
+              <div style={{ fontSize: 12, color: "#92400e", fontWeight: 600, marginBottom: 8 }}>
+                ⚠️ Important:
+              </div>
+              <div style={{ fontSize: 11, color: "#b45309" }}>
+                • Device must be connected via USB first
+                <br />
+                • Make sure device is on the same WiFi network
+                <br />
+                • After enabling, use "Add Device" to connect via IP
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+
       </div>
     </div>
   );
