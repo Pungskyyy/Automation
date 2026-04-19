@@ -7,13 +7,13 @@ const execAsync = util.promisify(exec);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const DELAYS = {
-  afterOpenLink: 7000,        // Tunggu video load dengan baik
-  afterCommentClick: 3500,    // Tunggu panel comment muncul sempurna
-  beforeTyping: 2000,         // Tunggu keyboard muncul + input field fokus
-  afterTyping: 2500,          // Tunggu text tersimpan + post button muncul
-  beforePostClick: 1000,      // Delay sebelum klik post
-  afterPostClick: 3000,       // Tunggu comment terkirim
-  beforeClose: 1500,          // Tunggu sebelum close
+  afterOpenLink: 8000,        // Tunggu video load dengan baik (DITAMBAH)
+  afterCommentClick: 4000,    // Tunggu panel comment muncul sempurna (DITAMBAH)
+  beforeTyping: 2500,         // Tunggu keyboard muncul + input field fokus (DITAMBAH)
+  afterTyping: 3500,          // Tunggu text tersimpan + post button muncul (DITAMBAH)
+  beforePostClick: 1500,      // Delay sebelum klik post (DITAMBAH)
+  afterPostClick: 4000,       // Tunggu comment terkirim (DITAMBAH)
+  beforeClose: 2000,          // Tunggu sebelum close (DITAMBAH)
 };
 
 // Helper: ADB shell command
@@ -46,12 +46,11 @@ async function findElementById(serial, resourceId) {
   return null;
 }
 
-
 // Helper: Try multiple resource IDs for post button
 async function findPostButton(serial) {
   const postButtonIds = [
-    "com.ss.android.ugc.trill:id/ckm",  // Post button (main)
-    "com.ss.android.ugc.trill:id/k09",  // Alternative post button
+    "com.ss.android.ugc.trill:id/k09",  // Post button (main)
+    "com.ss.android.ugc.trill:id/ckm",  // Alternative post button
   ];
   
   for (const id of postButtonIds) {
@@ -66,7 +65,7 @@ async function findPostButton(serial) {
   return null;
 }
 
-// TIKTOK COMMENT - FIXED with NEW resource IDs
+// TIKTOK COMMENT - IMPROVED with better delays and double-tap post button
 async function tiktokComment(serial, comment, url) {
   console.log(`[${serial}] ========== TikTok Comment ==========`);
 
@@ -81,17 +80,15 @@ async function tiktokComment(serial, comment, url) {
   await sleep(500);
   let xml = await adbShell(serial, `cat /sdcard/ui.xml`);
   
-  // NEW resource IDs from user
   const commentButtonId = "com.ss.android.ugc.trill:id/e60";  // Comment button
   const commentInputId = "com.ss.android.ugc.trill:id/e1k";  // EditText "Add comment..."
-  const postButtonId = "com.ss.android.ugc.trill:id/k09";  // Post button
   
   const inputAlreadyVisible = xml.includes(commentInputId);
   
   if (!inputAlreadyVisible) {
     console.log(`[${serial}] Comment panel closed - opening it...`);
     let commentBtn = await findElementById(serial, commentButtonId);
-    if (!commentBtn) commentBtn = { x: 992, y: 1210 };  // Center of [904,1127][1080,1292]
+    if (!commentBtn) commentBtn = { x: 992, y: 1210 };
     
     console.log(`[${serial}] Tap comment button at [${commentBtn.x}, ${commentBtn.y}]`);
     await adbShell(serial, `input tap ${commentBtn.x} ${commentBtn.y}`);
@@ -106,7 +103,7 @@ async function tiktokComment(serial, comment, url) {
   // 3. Tap input field
   console.log(`[${serial}] Finding input field...`);
   let input = await findElementById(serial, commentInputId);
-  if (!input) input = { x: 399, y: 1930 };  // Center of [199,1889][599,1970]
+  if (!input) input = { x: 399, y: 1930 };
   
   console.log(`[${serial}] Tap input at [${input.x}, ${input.y}]`);
   await adbShell(serial, `input tap ${input.x} ${input.y}`);
@@ -115,24 +112,31 @@ async function tiktokComment(serial, comment, url) {
   // 4. Type comment - HUMAN-LIKE TYPING
   console.log(`[${serial}] Typing like human: "${comment}"`);
   await humanLikeTyping(serial, comment, adbShell, sleep);
+  await sleep(DELAYS.afterTyping);
 
   // 5. Re-dump UI after typing to find post button
   console.log(`[${serial}] Re-dumping UI to find post button...`);
   await adbShell(serial, `uiautomator dump /sdcard/ui.xml`);
   await sleep(800);
 
-  // 6. Tap post button
+  // 6. Tap post button (DOUBLE TAP untuk memastikan)
   await sleep(DELAYS.beforePostClick);
 
   console.log(`[${serial}] Finding post button...`);
   let postBtn = await findPostButton(serial);
-  if (!postBtn) postBtn = { x: 976, y: 1158 };  // Center of [904,1114][1047,1202] (ckm)
+  if (!postBtn) postBtn = { x: 976, y: 1158 };
   
   console.log(`[${serial}] Tap post at [${postBtn.x}, ${postBtn.y}]`);
+  await adbShell(serial, `input tap ${postBtn.x} ${postBtn.y}`);
+  await sleep(800); // Small delay
+  
+  // DOUBLE TAP POST BUTTON untuk memastikan comment terkirim
+  console.log(`[${serial}] Double-tap post button...`);
   await adbShell(serial, `input tap ${postBtn.x} ${postBtn.y}`);
   await sleep(DELAYS.afterPostClick);
 
   // 7. Close
+  await sleep(DELAYS.beforeClose);
   await adbShell(serial, `input keyevent 4`);
   console.log(`[${serial}] ✅ Comment sent!`);
 }
